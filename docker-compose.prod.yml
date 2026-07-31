@@ -1,0 +1,150 @@
+# ---------------------------------------------------------------------------
+# ASEELO — production stack (Coolify / any Docker host)
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Differences from the development compose:
+#   * postgres and redis publish NO host ports — they are reachable only on the
+#     internal network, which is the single biggest hardening win here.
+#   * no default values for secrets: the stack fails to start rather than
+#     silently running with a known password.
+#   * the frontend gets the API origin at RUN time (API_PUBLIC_URL), so one
+#     built image can serve any domain.
+#
+# On Coolify: set the environment variables in the UI, point the frontend
+# service at your app domain and the backend service at your API domain, and
+# let Coolify's proxy terminate TLS for both.
+# ---------------------------------------------------------------------------
+
+name: aseelo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+  backend:
+    build:
+      context: ./backend
+    restart: always
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      # Comma-separated list of the exact browser origins allowed to call the API.
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS}
+      # Must be publicly reachable: browsers load rendered videos from here.
+      PUBLIC_MEDIA_BASE_URL: ${PUBLIC_MEDIA_BASE_URL:?set PUBLIC_MEDIA_BASE_URL}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      STORAGE_PATH: /data/storage
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_BUCKET: ${S3_BUCKET:-aseelo}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-536870912}
+      MAX_VIDEO_DURATION_SECONDS: ${MAX_VIDEO_DURATION_SECONDS:-180}
+      OUTPUT_CRF: ${OUTPUT_CRF:-20}
+      OUTPUT_PRESET: ${OUTPUT_PRESET:-medium}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+    volumes:
+      - mediadata:/data/storage
+    expose:
+      - "8000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: ["/app/entrypoint.sh", "api"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks: [internal, web]
+
+  worker:
+    build:
+      context: ./backend
+    restart: always
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      PUBLIC_MEDIA_BASE_URL: ${PUBLIC_MEDIA_BASE_URL}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      STORAGE_PATH: /data/storage
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_BUCKET: ${S3_BUCKET:-aseelo}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # FFmpeg is CPU-bound: keep this at or below the host's core count.
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+    volumes:
+      - mediadata:/data/storage
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: ["/app/entrypoint.sh", "worker"]
+    networks: [internal]
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: always
+    environment:
+      NODE_ENV: production
+      # Read at run time and served via /runtime-config.js, so changing the
+      # domain needs a restart, not a rebuild. Leave EMPTY when the API is
+      # reverse-proxied under the same domain (then there is no CORS at all).
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-}
+      APP_NAME: ${APP_NAME:-ASEELO}
+    expose:
+      - "3000"
+    depends_on:
+      - backend
+    networks: [web]
+
+volumes:
+  pgdata:
+  redisdata:
+  mediadata:
+
+networks:
+  # Datastores live here and are never exposed to the host or the proxy.
+  internal:
+  # Coolify's proxy attaches to this to route the public domains.
+  web:

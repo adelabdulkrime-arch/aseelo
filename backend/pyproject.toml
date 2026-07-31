@@ -1,0 +1,23 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "C4", "SIM"]
+ignore = [
+    "E501",   # line length is enforced by the formatter, not the linter
+    "B008",   # FastAPI's Depends()/File() defaults are the documented idiom
+    "S104",   # binding 0.0.0.0 is intentional inside the container
+    "UP037",  # quoted annotations are load-bearing for SQLAlchemy forward refs
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test/utility scripts legitimately hold fixture passwords and shell out to ffmpeg.
+"tests/*" = ["S101", "S105", "S106", "S107", "S603", "S607"]
+"scripts/*" = ["S101", "S603", "S607"]

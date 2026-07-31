@@ -1,0 +1,35 @@
+# Secrets
+.env
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Node / Next
+node_modules/
+.next/
+out/
+npm-debug.log*
+.eslintcache
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Local runtime data
+storage/
+/data/
+*.sqlite3
+*.db
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
