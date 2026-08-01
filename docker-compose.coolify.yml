@@ -1,0 +1,196 @@
+# ---------------------------------------------------------------------------
+# ASEELO — Coolify Cloud deployment, using images prebuilt by GitHub Actions.
+#
+# Point the Coolify resource at THIS file. It is identical in shape to
+# docker-compose.prod.yml except that nothing is built on the server: every
+# image is pulled from GHCR. On a 1-core VPS that difference is the whole
+# point — building the Next.js app on the box saturates the core for 10+
+# minutes and takes the live app down with it.
+#
+# Publish images first:  .github/workflows/build-images.yml (push to main)
+# Then in Coolify:       attach your domain to the `proxy` service on port 80.
+#
+# Keep this file in sync with docker-compose.prod.yml, which stays build-based
+# so the production stack can still be verified locally.
+# ---------------------------------------------------------------------------
+
+name: aseelo
+
+# Shared by the API and the worker. They run the SAME image and must agree on
+# every setting — the worker is what actually invokes FFmpeg, so the rendering
+# options belong here rather than on the API alone. Defining them once makes it
+# impossible for the two to drift. (Splitting these was a real bug: render
+# settings sat on the API only and changing them silently did nothing.)
+x-app-env: &app-env
+  APP_ENV: production
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+  CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS}
+  PUBLIC_MEDIA_BASE_URL: ${PUBLIC_MEDIA_BASE_URL:?set PUBLIC_MEDIA_BASE_URL}
+  STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+  STORAGE_PATH: /data/storage
+  S3_ENDPOINT: ${S3_ENDPOINT:-}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+  S3_BUCKET: ${S3_BUCKET:-aseelo}
+  S3_REGION: ${S3_REGION:-auto}
+  S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-536870912}
+  # ---- password reset / mail ----
+  # Only the API sends mail, but these live in the shared block for the same
+  # reason the render settings do: a variable that exists on one of the two
+  # containers and not the other is a silent bug waiting to happen.
+  APP_PUBLIC_URL: ${APP_PUBLIC_URL:-}
+  MAIL_BACKEND: ${MAIL_BACKEND:-console}
+  MAIL_FROM: ${MAIL_FROM:-ASEELO <no-reply@localhost>}
+  PASSWORD_RESET_TOKEN_TTL_MINUTES: ${PASSWORD_RESET_TOKEN_TTL_MINUTES:-60}
+  PASSWORD_RESET_RATE_LIMIT: ${PASSWORD_RESET_RATE_LIMIT:-5/hour}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+  SMTP_SSL: ${SMTP_SSL:-false}
+  # ---- 1-core defaults ----
+  # Measured on this codebase with the worker pinned to one core: rendering runs
+  # at ~14x realtime, so 45 s of video is already ~10 minutes of saturated CPU.
+  # Raise these only after adding cores.
+  MAX_VIDEO_DURATION_SECONDS: ${MAX_VIDEO_DURATION_SECONDS:-45}
+  RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+  # ---- rendering: read by the WORKER, which is the process that runs FFmpeg ----
+  # `veryfast` is only ~6% faster than `medium` here — the bottleneck is the
+  # filter graph (scale, blur/pad background, full-canvas overlay), not the
+  # H.264 encode. It is still the right default on one core, but do not expect
+  # preset tuning to rescue an undersized host.
+  OUTPUT_PRESET: ${OUTPUT_PRESET:-veryfast}
+  OUTPUT_CRF: ${OUTPUT_CRF:-20}
+  OUTPUT_WIDTH: ${OUTPUT_WIDTH:-1080}
+  OUTPUT_HEIGHT: ${OUTPUT_HEIGHT:-1920}
+  OUTPUT_FPS: ${OUTPUT_FPS:-30}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+  backend:
+    image: ${IMAGE_PREFIX:-ghcr.io/adelabdulkrime-arch}/aseelo-backend:${IMAGE_TAG:-latest}
+    # `latest` is a moving tag, so a redeploy must re-resolve it rather than
+    # reuse whatever the daemon already has cached.
+    pull_policy: always
+    restart: always
+    environment:
+      <<: *app-env
+    volumes:
+      - mediadata:/data/storage
+    expose:
+      - "8000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: ["/app/entrypoint.sh", "api"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks: [internal, web]
+
+  worker:
+    image: ${IMAGE_PREFIX:-ghcr.io/adelabdulkrime-arch}/aseelo-backend:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: always
+    environment:
+      <<: *app-env
+      # One core means one render at a time. Anything higher just makes every
+      # concurrent render slower and starves the API.
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+    volumes:
+      - mediadata:/data/storage
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: ["/app/entrypoint.sh", "worker"]
+    networks: [internal]
+
+  frontend:
+    image: ${IMAGE_PREFIX:-ghcr.io/adelabdulkrime-arch}/aseelo-frontend:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: always
+    environment:
+      NODE_ENV: production
+      # MUST stay defined-but-empty behind the proxy: empty means "same origin".
+      # The `:-` default guarantees the variable exists even if it is absent
+      # from Coolify's environment tab — an entirely absent value would fall
+      # back to the build-time default instead.
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-}
+      APP_NAME: ${APP_NAME:-ASEELO}
+    expose:
+      - "3000"
+    depends_on:
+      - backend
+    networks: [web]
+
+  # The single public entry point, and the ONLY service that should be given a
+  # domain in Coolify. One origin serves `/` (frontend), `/api` and `/media`
+  # (backend), so the browser never makes a cross-origin request and CORS
+  # cannot be misconfigured. Attach the domain to this service on port 80 —
+  # Coolify's Traefik terminates TLS in front of it.
+  proxy:
+    image: nginx:1.27-alpine
+    restart: always
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    expose:
+      - "80"
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    networks: [web]
+
+volumes:
+  # Declare all three as persistent storage in Coolify, or a redeploy discards
+  # the database and every rendered video.
+  pgdata:
+  redisdata:
+  mediadata:
+
+networks:
+  # Datastores live here and are never exposed to the host or the proxy.
+  internal:
+  # Coolify's proxy attaches to this to route the public domain.
+  web:

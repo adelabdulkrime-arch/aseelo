@@ -115,6 +115,24 @@ Optional: `STORAGE_PROVIDER` (`local`/`s3`) plus the `S3_*` group, `WORKER_CONCU
 `MAX_UPLOAD_SIZE`, `MAX_VIDEO_DURATION_SECONDS`, `OUTPUT_CRF`, `OUTPUT_PRESET`,
 `RATE_LIMIT_ENABLED`, `LOG_LEVEL`.
 
+### Password reset mail
+
+Password reset is **off by default**: `MAIL_BACKEND=console` logs the message instead of sending
+it, so nothing is delivered to users. To turn it on:
+
+| Variable | Notes |
+| --- | --- |
+| `APP_PUBLIC_URL` | public origin of the frontend; reset links are built from it. Empty = nothing is sent. Production rejects a localhost value |
+| `MAIL_BACKEND` | `console` or `smtp` |
+| `MAIL_FROM` | e.g. `ASEELO <no-reply@example.com>` — must be an address the provider lets you send as |
+| `SMTP_HOST` / `SMTP_PORT` | 587 with `SMTP_STARTTLS=true`, or 465 with `SMTP_SSL=true` |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | provider credentials |
+
+With `APP_ENV=production`, `MAIL_BACKEND=smtp` requires both `SMTP_HOST` and `APP_PUBLIC_URL` — the
+backend refuses to boot otherwise rather than accept reset requests it can never fulfil. There is
+no vendor SDK: any provider that speaks SMTP (SES, Resend, Postmark, Mailgun, Zoho) works by
+changing these variables alone.
+
 Generate the secret with:
 
 ```bash
@@ -123,30 +141,104 @@ python -c "import secrets;print(secrets.token_urlsafe(48))"
 
 ## Deploying to Coolify
 
-1. **Push the repository to GitHub** — see [below](#pushing-to-github).
-2. In Coolify: **+ New → Resource → Docker Compose**, connect the GitHub repo, and set the compose
-   file to `docker-compose.prod.yml`.
-3. **Set the environment variables** from `.env.production.example` in Coolify's Environment tab.
-   Do not commit the filled-in file.
-4. **Assign domains** (Coolify terminates TLS with Let's Encrypt automatically):
-   - `frontend` service, port `3000` → `app.example.com`
-   - `backend` service, port `8000` → `api.example.com` (topology A only)
-5. **Raise the proxy body limit.** Coolify's Traefik defaults are far below a 512 MB upload; add a
-   label or set `MAX_UPLOAD_SIZE` lower to match. A 413 on upload is almost always this.
-6. **Deploy**, then check the logs: the backend runs migrations and seeds the three templates on
-   first boot.
-7. **Verify**:
+This is the configured path: **Coolify Cloud**, a **1-core** VPS, a single domain behind the
+`proxy` service, and images **prebuilt by GitHub Actions**. Two files implement it:
+
+| File | Role |
+| --- | --- |
+| `.github/workflows/build-images.yml` | builds both images, pushes to GHCR |
+| `docker-compose.coolify.yml` | pulls those images; builds nothing on the server |
+| `.env.coolify.example` | the variables to paste into Coolify |
+
+### Why images are not built on the server
+
+The Next.js build wants ~2 GB and saturates a core for 10+ minutes. On a 1-core box that means
+every deploy takes the live app down, and it competes with the only core FFmpeg has. CI builds
+instead; the VPS only pulls. `docker-compose.prod.yml` stays build-based so the production stack
+can still be verified locally — keep the two files in sync when you change either.
+
+### 1. Publish the images
+
+Push to `main` (or run the workflow manually). It publishes:
+
+```
+ghcr.io/<owner>/aseelo-backend:latest   + :sha-<commit>
+ghcr.io/<owner>/aseelo-frontend:latest  + :sha-<commit>
+```
+
+The `sha-` tags are immutable — pin `IMAGE_TAG` to one to roll back.
+
+**The repository is private, so the packages are private too.** Give Coolify a registry credential:
+a GitHub PAT with `read:packages`, added under Coolify's *Private Registry* / Docker credentials
+and applied to the resource. Without it the deploy fails with `denied` or `manifest unknown` on
+`docker pull`.
+
+### 2. Create the resource
+
+**+ New → Resource → Docker Compose**, connect the GitHub repo, set the compose file to
+`docker-compose.coolify.yml`.
+
+### 3. Set the environment variables
+
+Paste from `.env.coolify.example` into Coolify's Environment tab. Do not commit a filled-in copy.
+Three of them must match the domain you attach in the next step.
+
+### 4. Attach ONE domain, to `proxy` only
+
+Give the domain to the **`proxy`** service on port **80**, and to nothing else. `proxy` is the only
+public entry point: it serves `/` from the frontend and `/api` + `/media` from the backend, so the
+browser only ever sees one origin and CORS never applies. Coolify's Traefik terminates TLS in
+front of it.
+
+No domain yet? Coolify generates an `sslip.io` hostname that resolves to your VPS IP and gets a
+real Let's Encrypt certificate — good enough to go live and swap later. Copy it from the Domains
+field, then set, with **no trailing slash**:
 
 ```bash
-curl -s https://api.example.com/health
+CORS_ORIGINS=https://<generated-domain>
+PUBLIC_MEDIA_BASE_URL=https://<generated-domain>/media
+API_PUBLIC_URL=
+```
+
+`API_PUBLIC_URL` must be **present and empty** — empty means same-origin. Leave the line in place
+rather than deleting it.
+
+### 5. Declare the volumes as persistent
+
+`pgdata`, `redisdata` and `mediadata` — otherwise a redeploy discards the database and every
+rendered video.
+
+### 6. Raise the proxy body limit
+
+Coolify's Traefik defaults are far below a 512 MB upload. Raise it or lower `MAX_UPLOAD_SIZE` to
+match. A 413 on upload is almost always this, not the app — `infra/nginx/nginx.conf` already
+allows 512 MB, but Traefik sits in front of it.
+
+### 7. Deploy and verify
+
+The backend runs migrations and seeds the three templates on first boot. Then:
+
+```bash
+curl -s https://<your-domain>/health
 ```
 
 ```bash
-curl -s https://app.example.com/runtime-config.js
+curl -s https://<your-domain>/runtime-config.js
 ```
 
-Note that `postgres` and `redis` publish **no** host ports in the production compose — they are
-reachable only on the internal network. Do not add ports for them.
+The second must print `{"apiUrl":"", ...}`. **If it prints `http://localhost:8000`, stop** — the
+frontend is telling every browser to call itself and nothing will work. That means
+`API_PUBLIC_URL` reached the container genuinely absent rather than empty.
+
+Then confirm the API and the app answer on the same origin:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://<your-domain>/api/templates
+```
+
+Note that `postgres` and `redis` publish **no** host ports — they are reachable only on the
+internal network. `backend` and `frontend` publish none either; only `proxy` is routed. Do not add
+ports for any of them.
 
 ### Persistence
 
@@ -321,5 +413,7 @@ source. Confirm with `ffprobe` on the input; if the source is fine, lower `OUTPU
 **Migrations fail on a fresh volume.** The initial migration needs the `pgcrypto` extension, which
 requires a superuser. The bundled Postgres has it; a managed database may need it enabled first.
 
-**Renders are slow.** `OUTPUT_PRESET=medium` at CRF 20 is quality-first. `fast` or `veryfast`
-roughly halves render time for a modest size increase.
+**Renders are slow.** Almost certainly not enough cores — see [Sizing the server](#sizing-the-server).
+`OUTPUT_PRESET=veryfast` is worth setting but buys only ~6%: the bottleneck is the filter graph
+(scale, blur/pad background, full-canvas overlay), not the H.264 encode. There is no setting that
+makes a 1-core host fast; add cores.

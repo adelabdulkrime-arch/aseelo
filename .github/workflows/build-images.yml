@@ -1,0 +1,97 @@
+# ---------------------------------------------------------------------------
+# Build the backend and frontend images and push them to GHCR.
+#
+# Why this exists: the target VPS has ONE core. The Next.js build alone wants
+# ~2 GB and saturates a core for well over ten minutes, during which the live
+# app is unusable. Building here and letting the server only *pull* keeps that
+# core free for FFmpeg, which is the actual product.
+#
+# The server consumes these images via docker-compose.coolify.yml.
+# ---------------------------------------------------------------------------
+name: Build images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/build-images.yml"
+  # Lets you rebuild and redeploy without an code change (e.g. base image CVEs).
+  workflow_dispatch:
+
+concurrency:
+  # A newer push makes an in-flight build pointless; don't pay for both.
+  group: build-images-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      # Don't let a frontend failure kill an otherwise good backend image.
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+          - name: frontend
+            context: ./frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR rejects uppercase path segments; repository owners may contain them.
+      - name: Compute image name
+        id: img
+        run: echo "name=${REGISTRY}/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/aseelo-${{ matrix.name }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.img.outputs.name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+        # `type=sha` gives every deploy an immutable tag to pin or roll back to;
+        # `latest` is what the compose file follows by default.
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          # The VPS is amd64 Ubuntu. Adding arm64 here would roughly double
+          # build time under QEMU for an image nothing would pull.
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          # NOTE: NEXT_PUBLIC_API_URL is deliberately NOT passed. The Dockerfile
+          # defaults it to empty, which means "same origin" — the correct value
+          # behind the single-domain nginx proxy. Passing a real origin here
+          # would bake one domain into the image and defeat /runtime-config.js.
+
+      - name: Summary
+        run: |
+          echo "### ${{ matrix.name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

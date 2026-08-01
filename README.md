@@ -104,6 +104,13 @@ real `.env`.
 
 ## Production
 
+Two compose files, for two different jobs:
+
+| File | Use |
+| --- | --- |
+| `docker-compose.prod.yml` | builds from source — verifying the production stack locally |
+| `docker-compose.coolify.yml` | pulls prebuilt images from GHCR — the actual deployment |
+
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
@@ -116,8 +123,10 @@ The API origin is resolved at **run time** via `/runtime-config.js`, not baked i
 one image serves any domain — set `API_PUBLIC_URL` and restart. Leave it empty to run the API
 reverse-proxied under the same domain, which removes CORS from the picture entirely.
 
-Full Coolify walkthrough, both topologies, and the GitHub push commands are in
-[docs/deployment.md](docs/deployment.md).
+The deployed target is Coolify Cloud on a 1-core VPS, with images built by
+`.github/workflows/build-images.yml` and pushed to GHCR — the server builds nothing, because the
+Next.js build alone would monopolise the only core for 10+ minutes. Full walkthrough, both
+topologies, and sizing measurements are in [docs/deployment.md](docs/deployment.md).
 
 ## Frontend
 
@@ -154,11 +163,28 @@ a service worker (`public/sw.js`) registered in production builds only.
 - **Standalone** — `env(safe-area-inset-*)` padding keeps content clear of the notch and home
   indicator, and overscroll bounce is disabled where there is no browser chrome to absorb it.
 
+## Template previews
+
+`seed_template_previews()` renders each template's picker thumbnail at seed time via
+`render_preview()` and stores it at `templates/previews/<slug>.png`. The key is stable, so
+re-rendering overwrites in place; the URL carries a `?v=<digest>` of the template configuration,
+which busts caches and lets the next boot detect whether anything actually changed — only the
+templates whose configuration moved are re-rendered. A render failure is logged and swallowed: the
+picker falls back to its gradient rather than blocking startup.
+
+## Password reset
+
+`POST /api/auth/forgot-password` issues a single-use token, stored only as a SHA-256 digest, and
+mails a link to `APP_PUBLIC_URL/reset-password?token=…`. `MAIL_BACKEND=console` (the default) logs
+the message instead of sending it, so development and tests need no credentials; `smtp` speaks to
+any provider, which is why there is no vendor SDK in the dependency list.
+
+The endpoint answers identically for unknown addresses, sends after responding, and swallows
+transport errors — each of those exists so that the response cannot be used to discover which
+addresses are registered. See [docs/api.md](docs/api.md#post-apiauthforgot-password).
+
 ## Next phase
 
-1. Template preview thumbnails (`render_preview()` in `app/video/compose.py` already produces
-   them; they just need generating at seed time and storing on `templates.preview_url`) — the
-   picker currently shows a gradient placeholder.
-2. Password reset delivery (the endpoint contract exists; no mail transport is wired up).
-3. Frontend component tests — the UI has been verified by hand against the live API, but has no
+1. Frontend component tests — the UI has been verified by hand against the live API, but has no
    automated coverage yet.
+2. Revoking existing sessions on password reset (needs a token version on the user row).
