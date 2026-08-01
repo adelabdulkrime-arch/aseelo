@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -56,6 +57,26 @@ def create_access_token(
         "jti": uuid.uuid4().hex,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+# ---------------------------------------------------------------------------
+# Password reset tokens
+# ---------------------------------------------------------------------------
+def generate_reset_token() -> tuple[str, str]:
+    """Return ``(plaintext, sha256_hex)`` for a fresh reset token.
+
+    The plaintext goes in the email and is never persisted; the digest is what
+    the database stores and what a redemption is looked up by. SHA-256 without
+    a salt is deliberate here and safe: unlike a password this is 256 bits of
+    CSPRNG output, so it is not guessable and a slow KDF would buy nothing
+    while making every redemption expensive.
+    """
+    plaintext = secrets.token_urlsafe(32)
+    return plaintext, hash_reset_token(plaintext)
+
+
+def hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 class TokenError(Exception):

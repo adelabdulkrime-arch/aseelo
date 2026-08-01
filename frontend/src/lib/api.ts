@@ -36,7 +36,9 @@ export function apiOrigin(): string {
     const runtime = window.__ASEELO_CONFIG__?.apiUrl;
     if (typeof runtime === "string") return runtime.replace(/\/+$/, "");
   }
-  return (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+  // `??`, not `||`: an explicitly empty build value means "same origin" and must
+  // not fall through to localhost. Only a genuinely absent value does.
+  return (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 }
 
 export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "ASEELO";
@@ -144,6 +146,20 @@ export const api = {
     request<TokenResponse>("/api/auth/login", { method: "POST", body: input, auth: false }),
 
   me: () => request<User>("/api/auth/me"),
+
+  forgotPassword: (input: { email: string }) =>
+    request<{ message: string }>("/api/auth/forgot-password", {
+      method: "POST",
+      body: input,
+      auth: false,
+    }),
+
+  resetPassword: (input: { token: string; password: string; confirm_password: string }) =>
+    request<{ message: string }>("/api/auth/reset-password", {
+      method: "POST",
+      body: input,
+      auth: false,
+    }),
 
   getBrand: () => request<Brand>("/api/brand"),
 

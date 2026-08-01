@@ -61,9 +61,33 @@ const STRINGS = {
     ar: "كلمة المرور يجب ألا تقل عن ٨ أحرف",
     en: "Password must be at least 8 characters",
   },
-  forgotPasswordHelp: {
-    ar: "تواصل مع الدعم لإعادة تعيين كلمة المرور — استعادة كلمة المرور بالبريد غير مفعّلة بعد.",
-    en: "Contact support to reset your password — email recovery is not enabled yet.",
+  forgotPasswordTitle: { ar: "استعادة كلمة المرور", en: "Reset your password" },
+  forgotPasswordSubtitle: {
+    ar: "أدخل بريدك الإلكتروني وسنرسل لك رابطاً لإعادة التعيين.",
+    en: "Enter your email and we'll send you a reset link.",
+  },
+  sendResetLink: { ar: "إرسال الرابط", en: "Send reset link" },
+  // Deliberately non-committal: the API does not reveal whether the address is
+  // registered, so this copy must not either.
+  resetLinkSent: {
+    ar: "إن كان هناك حساب بهذا البريد، فقد أُرسل إليه رابط لإعادة التعيين. تحقّق من بريدك.",
+    en: "If an account exists for that address, a reset link has been sent. Check your inbox.",
+  },
+  backToLogin: { ar: "العودة لتسجيل الدخول", en: "Back to sign in" },
+  resetPasswordTitle: { ar: "تعيين كلمة مرور جديدة", en: "Set a new password" },
+  resetPasswordSubtitle: {
+    ar: "اختر كلمة مرور جديدة لحسابك.",
+    en: "Choose a new password for your account.",
+  },
+  newPassword: { ar: "كلمة المرور الجديدة", en: "New password" },
+  resetPasswordSubmit: { ar: "حفظ كلمة المرور", en: "Save password" },
+  resetPasswordDone: {
+    ar: "تم تغيير كلمة المرور. يمكنك تسجيل الدخول الآن.",
+    en: "Your password has been changed. You can sign in now.",
+  },
+  resetTokenMissing: {
+    ar: "الرابط غير صالح أو ناقص. اطلب رابطاً جديداً.",
+    en: "This link is invalid or incomplete. Request a new one.",
   },
 
   // ---- nav ----

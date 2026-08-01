@@ -262,3 +262,15 @@ class MessageResponse(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=16, max_length=256)
+    password: Password
+    confirm_password: Password
+
+    @model_validator(mode="after")
+    def _passwords_match(self) -> "ResetPasswordRequest":
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self

@@ -2,8 +2,9 @@
 
 Base URL: `http://localhost:8000`. Interactive docs (OpenAPI) at `/docs`.
 
-All endpoints below except `/health`, `/api/auth/register`, `/api/auth/login` and
-`/api/templates` require `Authorization: Bearer <access_token>`.
+All endpoints below except `/health`, `/api/auth/register`, `/api/auth/login`,
+`/api/auth/forgot-password`, `/api/auth/reset-password` and `/api/templates` require
+`Authorization: Bearer <access_token>`.
 
 ## Errors
 
@@ -55,6 +56,30 @@ wrong password — the responses are indistinguishable on purpose.
 ### `GET /api/auth/me` → 200
 
 Returns the authenticated `UserOut`.
+
+### `POST /api/auth/forgot-password` → 200
+
+Body: `email`. Always returns the same `{"message": ...}`, whether or not an account exists —
+otherwise the endpoint would be a way to enumerate registered addresses. For the same reason the
+mail is sent *after* the response (so delivery time cannot be measured) and a transport failure is
+logged rather than returned.
+
+Issuing a link retires any earlier one for that user. Rate limited by `PASSWORD_RESET_RATE_LIMIT`
+(default `5/hour`), tighter than the other auth endpoints because this one sends mail to an
+address the caller chooses.
+
+Nothing is sent when `APP_PUBLIC_URL` is empty — there would be no valid link to include.
+
+### `POST /api/auth/reset-password` → 200
+
+Body: `token`, `password`, `confirm_password`. Returns 422 with `validation_error` for a token that
+is unknown, already used, expired, or belongs to a disabled account — all four are the same
+message, so a caller learns nothing about which.
+
+Tokens are single-use, expire after `PASSWORD_RESET_TOKEN_TTL_MINUTES` (default 60), and are stored
+only as a SHA-256 digest, so a database leak cannot be replayed.
+
+> Access tokens are stateless JWTs: sessions issued before a reset remain valid until they expire.
 
 ## Brand
 

@@ -18,7 +18,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [hint, setHint] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -54,7 +53,6 @@ export default function LoginPage() {
     >
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         {error && <Alert kind="error">{error}</Alert>}
-        {hint && <Alert kind="success">{hint}</Alert>}
 
         <Field label={t("email")} htmlFor="email">
           <input
@@ -87,13 +85,12 @@ export default function LoginPage() {
           {t("login")}
         </button>
 
-        <button
-          type="button"
-          className="w-full text-center text-sm text-ink-muted hover:text-brand"
-          onClick={() => setHint(t("forgotPasswordHelp"))}
+        <Link
+          href="/forgot-password"
+          className="block w-full text-center text-sm text-ink-muted hover:text-brand"
         >
           {t("forgotPassword")}
-        </button>
+        </Link>
       </form>
     </AuthShell>
   );

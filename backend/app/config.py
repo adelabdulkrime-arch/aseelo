@@ -68,6 +68,30 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     auth_rate_limit: str = "10/minute"
     upload_rate_limit: str = "30/hour"
+    # Deliberately tighter than auth_rate_limit: this endpoint sends mail to an
+    # address the caller chose, so it is the one worth abusing as a spam relay.
+    password_reset_rate_limit: str = "5/hour"  # noqa: S105 - a rate limit, not a secret
+
+    # ---------- Mail / password reset ----------
+    # Origin of the FRONTEND as a user's browser sees it, used to build the
+    # reset link. Under the single-domain proxy topology this is the one public
+    # domain. Empty disables sending entirely.
+    app_public_url: str = ""
+    # `console` logs the message instead of sending it - the default so that
+    # development and tests never need mail credentials. `smtp` speaks to any
+    # provider (SES, Resend, Postmark, Mailgun, Zoho...), which is why there is
+    # no vendor SDK here.
+    mail_backend: Literal["console", "smtp"] = "console"
+    mail_from: str = "ASEELO <no-reply@localhost>"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    # STARTTLS on an ordinary port (587). Set smtp_ssl for implicit TLS (465).
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
+    smtp_timeout_seconds: int = 15
+    password_reset_token_ttl_minutes: int = 60
 
     # ---------- Misc ----------
     allowed_video_mime_types: str = (
@@ -109,6 +133,14 @@ class Settings(BaseSettings):
             )
         if self.storage_provider == "s3" and not (self.s3_access_key and self.s3_secret_key):
             problems.append("STORAGE_PROVIDER=s3 but S3 credentials are missing")
+        if self.mail_backend == "smtp" and not self.smtp_host:
+            problems.append("MAIL_BACKEND=smtp but SMTP_HOST is empty")
+        if self.mail_backend == "smtp" and not self.app_public_url:
+            problems.append(
+                "MAIL_BACKEND=smtp but APP_PUBLIC_URL is empty; reset links could not be built"
+            )
+        if "localhost" in self.app_public_url or "127.0.0.1" in self.app_public_url:
+            problems.append("APP_PUBLIC_URL still points at localhost; reset links would be dead")
 
         if problems:
             raise ValueError(

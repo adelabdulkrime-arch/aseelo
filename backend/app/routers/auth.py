@@ -4,20 +4,43 @@
 # FastAPI resolve string annotations against slowapi's module globals, where this
 # module's dependency aliases do not exist, so they degrade into required body fields.
 
-from fastapi import APIRouter, Request
-from sqlalchemy import select
+from datetime import UTC, datetime, timedelta
+
+from fastapi import APIRouter, BackgroundTasks, Request
+from sqlalchemy import delete, select
 
 from app.config import settings
 from app.deps import CurrentUser, DbSession
-from app.errors import AuthError, ConflictError
+from app.errors import AuthError, ConflictError, ValidationError
 from app.logging_config import get_logger
-from app.models import BrandProfile, User
+from app.models import BrandProfile, PasswordResetToken, User
 from app.rate_limit import limiter
-from app.schemas import LoginRequest, RegisterRequest, TokenResponse, UserOut
-from app.security import create_access_token, hash_password, verify_password
+from app.schemas import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    MessageResponse,
+    RegisterRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+    UserOut,
+)
+from app.security import (
+    create_access_token,
+    generate_reset_token,
+    hash_password,
+    hash_reset_token,
+    verify_password,
+)
+from app.services.mail import MailError, send_password_reset
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Identical for every outcome: whether the address is registered must not be
+# observable, so this is returned for unknown addresses too.
+_RESET_SENT_MESSAGE = (
+    "If an account exists for that address, a reset link has been sent."
+)
 
 
 def _token_response(user: User) -> TokenResponse:
@@ -67,3 +90,92 @@ def login(request: Request, payload: LoginRequest, db: DbSession) -> TokenRespon
 @router.get("/me", response_model=UserOut)
 def me(user: CurrentUser) -> UserOut:
     return UserOut.model_validate(user)
+
+
+def _deliver_reset(email: str, name: str, token: str) -> None:
+    """Send the reset mail, swallowing transport failures.
+
+    Runs after the response has been returned. A raised MailError here would be
+    an enumeration oracle: delivery is only attempted for addresses that exist,
+    so a 500 on failure would answer exactly the question the generic message
+    is designed to hide. Log it instead - the operator needs to know, the
+    caller must not.
+    """
+    try:
+        send_password_reset(to=email, name=name, token=token)
+    except MailError as exc:
+        logger.error("password_reset_mail_failed", extra={"email": email, "error": str(exc)})
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+@limiter.limit(settings.password_reset_rate_limit)
+def forgot_password(
+    request: Request,
+    payload: ForgotPasswordRequest,
+    db: DbSession,
+    background: BackgroundTasks,
+) -> MessageResponse:
+    user = db.scalar(select(User).where(User.email == payload.email))
+
+    if user is not None and user.is_active:
+        # One live token per user: issuing a new link retires any earlier one.
+        db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
+        plaintext, token_hash = generate_reset_token()
+        db.add(
+            PasswordResetToken(
+                user_id=user.id,
+                token_hash=token_hash,
+                expires_at=datetime.now(UTC)
+                + timedelta(minutes=settings.password_reset_token_ttl_minutes),
+            )
+        )
+        db.commit()
+        # Deliberately after the response: sending inline would make the
+        # endpoint measurably slower for registered addresses than for unknown
+        # ones, reintroducing enumeration through timing.
+        background.add_task(_deliver_reset, user.email, user.name, plaintext)
+        logger.info("password_reset_requested", extra={"user_id": str(user.id)})
+    else:
+        logger.info("password_reset_requested_unknown_email")
+
+    return MessageResponse(message=_RESET_SENT_MESSAGE)
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+@limiter.limit(settings.password_reset_rate_limit)
+def reset_password(
+    request: Request, payload: ResetPasswordRequest, db: DbSession
+) -> MessageResponse:
+    record = db.scalar(
+        select(PasswordResetToken).where(
+            PasswordResetToken.token_hash == hash_reset_token(payload.token)
+        )
+    )
+    # One message for every failure mode: an unknown token, a spent one and an
+    # expired one are indistinguishable to the caller.
+    if (
+        record is None
+        or record.used_at is not None
+        or record.expires_at <= datetime.now(UTC)
+    ):
+        raise ValidationError("This reset link is invalid or has expired")
+
+    user = db.scalar(select(User).where(User.id == record.user_id))
+    if user is None or not user.is_active:
+        raise ValidationError("This reset link is invalid or has expired")
+
+    user.password_hash = hash_password(payload.password)
+    record.used_at = datetime.now(UTC)
+    # Any other outstanding link for this user dies with the reset.
+    db.execute(
+        delete(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id, PasswordResetToken.id != record.id
+        )
+    )
+    db.commit()
+
+    # NOTE: access tokens are stateless JWTs, so sessions issued before the
+    # reset stay valid until they expire. Revoking them needs a token version
+    # on the user row - worth doing if this ever guards anything sensitive.
+    logger.info("password_reset_completed", extra={"user_id": str(user.id)})
+    return MessageResponse(message="Your password has been reset. You can now sign in.")

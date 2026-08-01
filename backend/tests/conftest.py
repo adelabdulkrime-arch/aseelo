@@ -35,7 +35,12 @@ def _schema() -> Iterator[None]:
 def _clean_tables() -> Iterator[None]:
     """Truncate user data between tests; seeded templates are re-created."""
     with SessionLocal() as db:
-        db.execute(text("TRUNCATE users, videos, rendering_jobs, brand_profiles CASCADE"))
+        db.execute(
+            text(
+                "TRUNCATE users, videos, rendering_jobs, brand_profiles, "
+                "password_reset_tokens CASCADE"
+            )
+        )
         db.commit()
     yield
 
