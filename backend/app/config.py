@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     # Deliberately tighter than auth_rate_limit: this endpoint sends mail to an
     # address the caller chose, so it is the one worth abusing as a spam relay.
     password_reset_rate_limit: str = "5/hour"  # noqa: S105 - a rate limit, not a secret
+    # Tighter than auth_rate_limit for the same reason: a caller who guesses a
+    # (email, charge_id) pair gets an account, so guessing must be expensive.
+    setup_account_rate_limit: str = "10/hour"
 
     # ---------- Mail / password reset ----------
     # Origin of the FRONTEND as a user's browser sees it, used to build the

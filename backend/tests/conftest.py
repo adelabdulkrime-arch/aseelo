@@ -38,7 +38,7 @@ def _clean_tables() -> Iterator[None]:
         db.execute(
             text(
                 "TRUNCATE users, videos, rendering_jobs, brand_profiles, "
-                "password_reset_tokens CASCADE"
+                "password_reset_tokens, payment_charges CASCADE"
             )
         )
         db.commit()

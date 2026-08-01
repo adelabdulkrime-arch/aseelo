@@ -264,6 +264,22 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 
+class SetupAccountRequest(BaseModel):
+    """Redeem a paid charge into an account.
+
+    No `confirm_password`, unlike registration: the setup page shows a single
+    password field, because the customer arrives here from a payment receipt
+    and a second box is one more thing between them and the product. A mistyped
+    password is recoverable through the ordinary reset flow.
+    """
+
+    # Both are required and both are checked: the charge reference alone does
+    # not authorise account creation, the pair does.
+    charge_id: str = Field(min_length=6, max_length=128)
+    email: EmailStr
+    password: Password
+
+
 class ResetPasswordRequest(BaseModel):
     token: str = Field(min_length=16, max_length=256)
     password: Password

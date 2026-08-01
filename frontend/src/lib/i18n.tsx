@@ -90,6 +90,25 @@ const STRINGS = {
     en: "This link is invalid or incomplete. Request a new one.",
   },
 
+  // ---- post-payment activation ----
+  setupAccountTitle: { ar: "تفعيل حسابك", en: "Activate your account" },
+  setupAccountSubtitle: {
+    ar: "تم استلام دفعتك. اختر كلمة مرور وابدأ فوراً.",
+    en: "Your payment is confirmed. Choose a password and get started.",
+  },
+  setupAccountSubmit: { ar: "حفظ ومتابعة", en: "Save & Proceed" },
+  choosePassword: { ar: "اختر كلمة المرور", en: "Choose a password" },
+  // The email is fixed by the payment: editing it would point the account at an
+  // address that was never paid for, and the API would refuse it anyway.
+  setupEmailLocked: {
+    ar: "هذا هو البريد المستخدم في الدفع ولا يمكن تغييره.",
+    en: "This is the email you paid with and cannot be changed.",
+  },
+  setupLinkInvalid: {
+    ar: "رابط التفعيل غير صالح أو ناقص. تحقّق من الرابط في بريد الإيصال.",
+    en: "This activation link is invalid or incomplete. Check the link in your receipt email.",
+  },
+
   // ---- nav ----
   dashboard: { ar: "لوحة التحكم", en: "Dashboard" },
   brand: { ar: "الهوية التجارية", en: "Brand" },

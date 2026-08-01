@@ -3,8 +3,8 @@
 Base URL: `http://localhost:8000`. Interactive docs (OpenAPI) at `/docs`.
 
 All endpoints below except `/health`, `/api/auth/register`, `/api/auth/login`,
-`/api/auth/forgot-password`, `/api/auth/reset-password` and `/api/templates` require
-`Authorization: Bearer <access_token>`.
+`/api/auth/setup-account`, `/api/auth/forgot-password`, `/api/auth/reset-password` and
+`/api/templates` require `Authorization: Bearer <access_token>`.
 
 ## Errors
 
@@ -52,6 +52,43 @@ Rate limited (`AUTH_RATE_LIMIT`, default 10/minute).
 
 Body: `email`, `password`. Same `TokenResponse`. Returns 401 for both an unknown email and a
 wrong password — the responses are indistinguishable on purpose.
+
+### `POST /api/auth/setup-account` → 201
+
+Body: `charge_id`, `email`, `password` (≥8 chars). Redeems a paid charge into an account:
+creates the user and a default brand profile, marks the charge used, and returns the same
+`TokenResponse` as login — so the customer lands on the dashboard already signed in.
+
+No `confirm_password`: the setup page shows one password field, and a mistyped password is
+recoverable through the ordinary reset flow.
+
+`payment_charges` rows are written outside the app (payment happens elsewhere; a provider
+webhook is not part of the MVP). To record one:
+
+```bash
+docker compose run --rm backend python -m scripts.create_charge ch_3PabcXYZ customer@example.com
+```
+
+It prints the activation URL: `APP_PUBLIC_URL/setup-account?email=…&charge=…`.
+
+| Situation | Response |
+| --- | --- |
+| Unknown `charge_id` | 422 `validation_error` |
+| Charge already redeemed | 422 `validation_error` (identical message) |
+| `email` does not match the charge | 422 `validation_error` (identical message) |
+| An account already exists for that email | 409 `conflict`, charge left **unused** |
+
+The first three are deliberately indistinguishable: the pair `(email, charge_id)` is what
+authorises account creation, so naming which half was wrong would confirm which charge
+references exist. The 409 exists because paying with someone else's address must not let the
+payer set that account's password.
+
+Email is matched case-insensitively, and the account is created from the address stored on the
+charge, lowercased — the customer never types this address, so an account whose stored casing
+differs from what they type at login is an account they can never reach.
+
+Rate limited (`SETUP_ACCOUNT_RATE_LIMIT`, default 10/hour) — tighter than `AUTH_RATE_LIMIT`
+because a guessed pair yields an account.
 
 ### `GET /api/auth/me` → 200
 

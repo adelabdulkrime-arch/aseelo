@@ -4,16 +4,17 @@
 # FastAPI resolve string annotations against slowapi's module globals, where this
 # module's dependency aliases do not exist, so they degrade into required body fields.
 
+import re
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Request
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.config import settings
 from app.deps import CurrentUser, DbSession
 from app.errors import AuthError, ConflictError, ValidationError
 from app.logging_config import get_logger
-from app.models import BrandProfile, PasswordResetToken, User
+from app.models import BrandProfile, PasswordResetToken, PaymentCharge, User
 from app.rate_limit import limiter
 from app.schemas import (
     ForgotPasswordRequest,
@@ -21,6 +22,7 @@ from app.schemas import (
     MessageResponse,
     RegisterRequest,
     ResetPasswordRequest,
+    SetupAccountRequest,
     TokenResponse,
     UserOut,
 )
@@ -71,6 +73,95 @@ def register(request: Request, payload: RegisterRequest, db: DbSession) -> Token
     db.refresh(user)
 
     logger.info("user_registered", extra={"user_id": str(user.id)})
+    return _token_response(user)
+
+
+# One message for unknown, spent and mismatched charges alike. The pair
+# (email, charge_id) is what authorises account creation, so telling the caller
+# which half was wrong would turn this into a confirmation oracle for charge
+# references.
+_INVALID_CHARGE_MESSAGE = "This activation link is invalid or has already been used."
+
+_NAME_SEPARATORS = re.compile(r"[._+\-]+")
+
+
+def _name_from_email(email: str) -> str:
+    """Best-effort display name: the setup page collects only email and password.
+
+    The customer arrives from a payment receipt, and asking for a name there
+    would add a field to the one screen that should be as short as possible.
+    They can correct it in Settings; the brand name is theirs to edit anyway.
+    """
+    local = _NAME_SEPARATORS.sub(" ", email.split("@", 1)[0])
+    name = " ".join(part.capitalize() for part in local.split() if part)
+    # `users.name` is NOT NULL and the rest of the app assumes it reads like a
+    # name, but `a@example.com` is a legal address - so fall back rather than
+    # write a one-character string.
+    return name[:120] if len(name) >= 2 else "ASEELO Customer"
+
+
+@router.post("/setup-account", response_model=TokenResponse, status_code=201)
+@limiter.limit(settings.setup_account_rate_limit)
+def setup_account(
+    request: Request, payload: SetupAccountRequest, db: DbSession
+) -> TokenResponse:
+    """Turn a paid charge into an account, and sign the customer straight in."""
+    charge = db.scalar(
+        select(PaymentCharge)
+        .where(PaymentCharge.charge_id == payload.charge_id)
+        # Locked for the duration: without it two clicks on the same link can
+        # both read used_at as NULL and both proceed. The users.email unique
+        # index would still catch the duplicate, but as a 500 rather than a
+        # clean refusal.
+        .with_for_update()
+    )
+
+    if (
+        charge is None
+        or charge.used_at is not None
+        # Case-insensitive: providers echo back whatever the customer typed,
+        # and an address that differs only in case is the same mailbox.
+        or charge.email.lower() != payload.email.lower()
+    ):
+        raise ValidationError(_INVALID_CHARGE_MESSAGE)
+
+    # The ledger is the record of who paid, so the account belongs to the
+    # address on the charge - not to whatever casing arrived in the URL.
+    # Lowercased because login compares emails exactly: storing
+    # `SARA.HASSAN@example.com` because that is how the link was written
+    # produces an account nobody can sign in to, and the customer never typed
+    # that address in the first place. Returned 201 and passed every test.
+    email = charge.email.lower()
+
+    # An address that already has an account must not have its password set by
+    # whoever holds the link - paying with someone else's email would otherwise
+    # be an account takeover. Compared case-insensitively, or the same casing
+    # trick walks straight past the guard and makes a duplicate account. The
+    # charge stays unused, so support can still redeem or refund it.
+    if db.scalar(select(User).where(func.lower(User.email) == email)) is not None:
+        raise ConflictError(
+            "An account already exists for this email. Sign in instead, "
+            "or reset your password."
+        )
+
+    user = User(
+        name=_name_from_email(email),
+        email=email,
+        password_hash=hash_password(payload.password),
+    )
+    db.add(user)
+    db.flush()
+    db.add(BrandProfile(user_id=user.id, brand_name=f"{user.name}'s Brand"))
+
+    charge.used_at = datetime.now(UTC)
+    charge.user_id = user.id
+    db.commit()
+    db.refresh(user)
+
+    logger.info(
+        "account_setup_from_charge",
+        extra={"user_id": str(user.id), "charge_id": charge.charge_id},
+    )
     return _token_response(user)
 
 

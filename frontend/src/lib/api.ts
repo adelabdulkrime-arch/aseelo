@@ -145,6 +145,14 @@ export const api = {
   login: (input: { email: string; password: string }) =>
     request<TokenResponse>("/api/auth/login", { method: "POST", body: input, auth: false }),
 
+  /** Redeem a paid charge into an account. Returns a token, like login does. */
+  setupAccount: (input: { email: string; charge_id: string; password: string }) =>
+    request<TokenResponse>("/api/auth/setup-account", {
+      method: "POST",
+      body: input,
+      auth: false,
+    }),
+
   me: () => request<User>("/api/auth/me"),
 
   forgotPassword: (input: { email: string }) =>

@@ -183,6 +183,27 @@ The endpoint answers identically for unknown addresses, sends after responding, 
 transport errors — each of those exists so that the response cannot be used to discover which
 addresses are registered. See [docs/api.md](docs/api.md#post-apiauthforgot-password).
 
+## Post-payment activation
+
+Payment happens outside the app. What the app owns is the redemption: a `payment_charges` row
+records that a charge was paid and by which address, and `POST /api/auth/setup-account` spends it
+exactly once — creating the user and a default brand profile, then returning a token so the
+customer lands on the dashboard already signed in rather than at a login screen.
+
+```bash
+docker compose run --rm backend python -m scripts.create_charge ch_3PabcXYZ customer@example.com
+```
+
+That prints the link to send: `/setup-account?email=…&charge=…`. Nothing else writes to that
+table — a provider webhook is deliberately not part of the MVP, and without this command the flow
+would have no way to be exercised at all.
+
+Unknown, spent and mismatched charges all answer identically, because the pair
+`(email, charge_id)` is what authorises account creation and naming the wrong half would confirm
+which charge references exist. An address that already has an account gets a 409 instead and the
+charge is left unspent: paying with someone else's email must not set that account's password.
+See [docs/api.md](docs/api.md#post-apiauthsetup-account).
+
 ## Next phase
 
 1. Frontend component tests — the UI has been verified by hand against the live API, but has no
