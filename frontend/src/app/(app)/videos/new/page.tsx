@@ -185,7 +185,19 @@ export default function CreateVideoPage() {
                       : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
                   }`}
                 >
-                  <div className="mb-2 aspect-[9/16] w-full overflow-hidden rounded-lg bg-gradient-to-br from-ink to-brand/70" />
+                  {/* The gradient stays as the container background, so it also
+                      covers the gap while the image loads or if it 404s. */}
+                  <div className="mb-2 aspect-[9/16] w-full overflow-hidden rounded-lg bg-gradient-to-br from-ink to-brand/70">
+                    {template.preview_url && (
+                      // eslint-disable-next-line @next/next/no-img-element -- media comes from the API/S3 host
+                      <img
+                        src={template.preview_url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    )}
+                  </div>
                   <p className="text-sm font-semibold">{template.name}</p>
                   {template.description && (
                     <p className="mt-0.5 line-clamp-3 text-xs text-ink-muted">

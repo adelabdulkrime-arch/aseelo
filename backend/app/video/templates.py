@@ -222,21 +222,10 @@ TEMPLATE_02 = _base(
                 "shadow": False,
             },
         },
-        {
-            "type": "text",
-            "name": "website",
-            "source": "website",
-            "box": {"x": 292, "y": 1726, "w": 708, "h": 56},
-            "style": {
-                "bold": False,
-                "size": 32,
-                "min_size": 18,
-                "color": "$accent",
-                "align": "start",
-                "max_lines": 1,
-                "shadow": False,
-            },
-        },
+        # No separate `website` layer here: `contact_inline` above already ends
+        # with the website (see _contact_parts), so adding one printed the same
+        # URL twice, stacked, inside the brand bar. Caught by looking at a
+        # rendered preview — every assertion still passed.
     ],
 )
 
