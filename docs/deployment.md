@@ -234,6 +234,41 @@ Then point Coolify at the repository and enable automatic deploys on push if you
 8. **Resources** — FFmpeg is CPU-bound; budget ~1 core per worker process and keep
    `WORKER_CONCURRENCY` at or below the core count.
 
+## Sizing the server
+
+Rendering is the whole product, and it is CPU-bound. These numbers were measured on this codebase
+with the worker container limited to **one core** (`docker update --cpus=1`), rendering the smoke
+test's 6-second 1080×1920 clip:
+
+| `OUTPUT_PRESET` | render time | ratio |
+| --- | --- | --- |
+| `medium` (default) | 85–98 s | ~14–16× realtime |
+| `veryfast` | 81 s | ~13.5× realtime |
+
+Two things follow, and both are counter-intuitive:
+
+1. **Preset tuning barely helps.** `veryfast` bought ~6%, not the 2–3× you would expect. The
+   bottleneck is the filter graph — scaling to 1080×1920, the blur/pad background and the
+   full-canvas overlay composite — not the H.264 encode. Do not expect to tune your way out of an
+   undersized host.
+2. **One core is not enough.** At ~14× realtime, a 60-second clip takes ~14 minutes and the
+   180-second maximum takes ~40 minutes, during which that core is saturated and the API, database
+   and frontend all contend for it. The app feels broken while anything is rendering.
+
+Practical guidance:
+
+| Host | `WORKER_CONCURRENCY` | Realistic `MAX_VIDEO_DURATION_SECONDS` |
+| --- | --- | --- |
+| 1 core | `1` | 30–60 (and warn users renders take minutes) |
+| 2 cores | `1` | 90 |
+| 4 cores | `2` | 180 |
+| 8 cores | `3`–`4` | 180 |
+
+Budget roughly **one core per concurrent render**, plus one for everything else. RAM is not the
+constraint — 4 GB is comfortable — but building the images is: the Next.js build wants ~2 GB and is
+CPU-heavy, so on a 1–2 core box prefer building elsewhere (Coolify's *Use it as a build server*
+option, or a CI job pushing to a registry) rather than on the box that serves traffic.
+
 ## Scaling
 
 ```bash
