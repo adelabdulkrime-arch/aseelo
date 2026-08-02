@@ -23,7 +23,16 @@ next-env.d.ts
 tsconfig.tsbuildinfo
 
 # Local runtime data
-storage/
+#
+# ANCHORED (leading slash) on purpose. A bare `storage/` matches at every depth,
+# which silently swallowed `backend/app/storage/` - the storage provider package
+# imported by the routers, the worker and the seeder. Local builds kept working
+# because `docker build` copies the working tree including untracked files;
+# CI's `actions/checkout` gets only tracked files, so every published image was
+# missing the package and crashed at boot with ModuleNotFoundError. Nothing
+# failed locally, no test caught it, and the image looked like it built fine.
+/storage/
+/backend/storage/
 /data/
 *.sqlite3
 *.db
