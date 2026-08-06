@@ -4,6 +4,12 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
+# `vite` is pinned to 6.x in devDependencies rather than left to npm. Its only
+# direct consumer is the test tooling, but @vitejs/plugin-react accepts vite
+# 4-7, so npm resolves 7 - which demands @types/node >=22.12 and fails ERESOLVE
+# against this app's 22.10.5. Bumping @types/node to satisfy a test dependency
+# would change what the production build type-checks against, so the test tool
+# gives way instead. vitest 2.x targets vite 6 regardless.
 RUN npm install --no-audit --no-fund
 
 # ---------------------------------------------------------------------------
@@ -31,6 +37,21 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
+
+# ---------------------------------------------------------------------------
+# test - vitest + Testing Library, run in CI and locally
+#
+# Separate from `builder` so the test run never becomes a prerequisite of the
+# production image: `runner` copies only from `builder`, so nothing here ships.
+# There is no Node on the development machine, so this is the only way the
+# suite runs at all - see docker-compose.yml's `frontend-test` service.
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS test
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1 CI=1
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+CMD ["npm", "test"]
 
 # ---------------------------------------------------------------------------
 # runner - minimal standalone server
