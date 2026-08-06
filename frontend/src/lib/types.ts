@@ -20,6 +20,9 @@ export interface User {
   email: string;
   role: UserRole;
   is_active: boolean;
+  /** Session minted by /api/auth/guest rather than a chosen account. The
+   *  address is a synthetic `@guest.aseelo.example` one, so never show it as theirs. */
+  is_guest: boolean;
   created_at: string;
 }
 

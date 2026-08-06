@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { LoadingState } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
@@ -22,12 +24,25 @@ export default function SettingsPage() {
     <div className="animate-fade-in space-y-5">
       <h1 className="text-2xl font-bold">{t("settings")}</h1>
 
+      {/* A guest never chose their address, so showing the synthetic
+          `@guest.invalid` one would be confusing. Offer the way out instead:
+          their work lives on this browser's token alone and is lost with it. */}
+      {user.is_guest && (
+        <section className="card border-accent/40 bg-accent/5 p-5">
+          <h2 className="mb-1 font-bold">{t("guestTitle")}</h2>
+          <p className="mb-3 text-sm text-ink-muted">{t("guestBody")}</p>
+          <Link href="/register" className="btn-primary inline-flex">
+            {t("guestCreateAccount")}
+          </Link>
+        </section>
+      )}
+
       <section className="card p-5">
         <h2 className="mb-3 font-bold">{t("account")}</h2>
         <dl className="divide-y divide-slate-100 text-sm">
           {[
             { label: t("name"), value: user.name },
-            { label: t("email"), value: user.email },
+            ...(user.is_guest ? [] : [{ label: t("email"), value: user.email }]),
             { label: t("role"), value: user.role },
             { label: t("memberSince"), value: formatDate(user.created_at, locale) },
           ].map((row) => (

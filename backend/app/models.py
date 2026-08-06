@@ -82,6 +82,13 @@ class User(TimestampMixin, Base):
         SAEnum(UserRole, name="user_role"), default=UserRole.USER, nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Created by POST /api/auth/guest rather than by a person who chose a
+    # password. Flagged so these can be told apart from real customers when
+    # counting users, and pruned on a schedule - an endpoint that mints an
+    # account per visitor grows this table without limit otherwise.
+    is_guest: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false", index=True
+    )
 
     brand_profile: Mapped["BrandProfile | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False

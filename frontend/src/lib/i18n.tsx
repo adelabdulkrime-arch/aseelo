@@ -109,6 +109,14 @@ const STRINGS = {
     en: "This activation link is invalid or incomplete. Check the link in your receipt email.",
   },
 
+  // ---- guest sessions ----
+  guestTitle: { ar: "أنت تستخدم جلسة ضيف", en: "You are using a guest session" },
+  guestBody: {
+    ar: "فيديوهاتك محفوظة على هذا المتصفح فقط. أنشئ حساباً للاحتفاظ بها والوصول إليها من أي جهاز.",
+    en: "Your videos live in this browser only. Create an account to keep them and reach them from any device.",
+  },
+  guestCreateAccount: { ar: "إنشاء حساب دائم", en: "Create a permanent account" },
+
   // ---- nav ----
   dashboard: { ar: "لوحة التحكم", en: "Dashboard" },
   brand: { ar: "الهوية التجارية", en: "Brand" },

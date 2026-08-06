@@ -153,6 +153,14 @@ export const api = {
       auth: false,
     }),
 
+  /** Mint a throwaway session so the app opens without a login.
+   *
+   * 403 when the deployment has guest sessions disabled, 429 when the rate
+   * limit is hit - both are ordinary outcomes the caller is expected to handle,
+   * not bugs.
+   */
+  guest: () => request<TokenResponse>("/api/auth/guest", { method: "POST", auth: false }),
+
   me: () => request<User>("/api/auth/me"),
 
   forgotPassword: (input: { email: string }) =>

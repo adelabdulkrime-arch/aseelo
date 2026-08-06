@@ -98,8 +98,21 @@ def _stream_to_temp(upload: UploadFile, max_size: int, suffix: str) -> tuple[Pat
     return path, size, header
 
 
-def validate_video_upload(upload: UploadFile) -> ValidatedUpload:
-    """Validate and persist an uploaded video to a temporary file."""
+def validate_video_upload(
+    upload: UploadFile, *, max_duration_seconds: int | None = None
+) -> ValidatedUpload:
+    """Validate and persist an uploaded video to a temporary file.
+
+    `max_duration_seconds` overrides the global ceiling for this one upload.
+    Guests get a tighter limit than registered users: duration is what drives
+    render cost, and on a one-core host a single long render saturates the
+    machine for everyone. Defaults to the global setting when not given.
+    """
+    max_duration = (
+        settings.max_video_duration_seconds
+        if max_duration_seconds is None
+        else min(max_duration_seconds, settings.max_video_duration_seconds)
+    )
     extension = _extension_of(upload.filename)
     if extension not in settings.video_extensions:
         raise ValidationError(
@@ -133,10 +146,10 @@ def validate_video_upload(upload: UploadFile) -> ValidatedUpload:
             raise ValidationError(
                 f"The video is too short (minimum {settings.min_video_duration_seconds}s)"
             )
-        if media.duration > settings.max_video_duration_seconds:
+        if media.duration > max_duration:
             raise ValidationError(
                 f"The video is too long ({media.duration:.0f}s). "
-                f"Maximum is {settings.max_video_duration_seconds}s"
+                f"Maximum is {max_duration}s"
             )
         if min(media.width, media.height) < 144:
             raise ValidationError(

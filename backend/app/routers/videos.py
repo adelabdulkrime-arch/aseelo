@@ -106,7 +106,14 @@ def create_video(
     if template is None or not template.is_active:
         raise NotFoundError("Selected template was not found")
 
-    validated = validate_video_upload(video_file)
+    validated = validate_video_upload(
+        video_file,
+        # Duration drives render cost, and a guest is an anonymous caller who
+        # can be one of many. Registered users keep the full ceiling.
+        max_duration_seconds=(
+            settings.guest_max_video_duration_seconds if user.is_guest else None
+        ),
+    )
     try:
         storage = get_storage()
         input_key = build_key("users", str(user.id), "inputs", extension=validated.extension)

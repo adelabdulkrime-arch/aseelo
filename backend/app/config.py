@@ -75,6 +75,24 @@ class Settings(BaseSettings):
     # (email, charge_id) pair gets an account, so guessing must be expensive.
     setup_account_rate_limit: str = "10/hour"
 
+    # ---------- Guest sessions ----------
+    # Opens the app without a login. OFF by default: it lets anyone create an
+    # account and queue a render, and on a one-core host a render saturates the
+    # whole machine. Turn it on deliberately, per environment.
+    guest_sessions_enabled: bool = False
+    # Each guest is a real row and a real render slot, so this is deliberately
+    # far tighter than the other auth limits.
+    # Measured: a 6s clip takes ~105s on one saturated core (~17.6x realtime).
+    # At 5/hour with the full 45s ceiling, guests could queue more render work
+    # than an hour contains, so the queue would only ever grow.
+    guest_rate_limit: str = "2/hour"
+    # Guests only. Registered users keep max_video_duration_seconds.
+    guest_max_video_duration_seconds: int = 20
+    # How long a guest's work survives before scripts.prune_guests reclaims it.
+    # Their session token already expires sooner than this, so the account is
+    # unreachable well before it is removed.
+    guest_retention_days: int = 7
+
     # ---------- Mail / password reset ----------
     # Origin of the FRONTEND as a user's browser sees it, used to build the
     # reset link. Under the single-domain proxy topology this is the one public

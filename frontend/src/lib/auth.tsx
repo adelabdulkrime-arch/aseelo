@@ -38,24 +38,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    if (!getToken()) {
-      setLoading(false);
-      return;
-    }
-    api
-      .me()
-      .then((me) => {
-        if (!cancelled) setUser(me);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setToken(null);
-          setUser(null);
+
+    /** Open the app without a login, when the backend allows it.
+     *
+     * The session has to come from the server: every API call carries the JWT
+     * and the backend reads the user id out of it. A user object invented here
+     * would render a dashboard whose every request 401s - the app would look
+     * signed in and load nothing.
+     *
+     * A failure is not fatal. Guest sessions are off by default (403) and the
+     * endpoint is rate limited (429); in both cases we simply end up with no
+     * session, and the route guards fall back to /login as before.
+     */
+    async function start() {
+      try {
+        if (getToken()) {
+          const me = await api.me();
+          if (!cancelled) setUser(me);
+          return;
         }
-      })
-      .finally(() => {
+        const session = await api.guest();
+        // The token is written even if this effect was cancelled: it is real,
+        // the server issued it, and discarding it would mint another guest row
+        // on the next mount.
+        setToken(session.access_token);
+        if (!cancelled) setUser(session.user);
+      } catch {
+        setToken(null);
+        if (!cancelled) setUser(null);
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    }
+
+    void start();
     return () => {
       cancelled = true;
     };

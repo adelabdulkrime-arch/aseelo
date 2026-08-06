@@ -25,6 +25,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
+    // Only reached when no session could be established at all - AuthProvider
+    // has already tried a guest session by the time `loading` clears.
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
 

@@ -5,6 +5,8 @@
 # module's dependency aliases do not exist, so they degrade into required body fields.
 
 import re
+import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Request
@@ -12,7 +14,7 @@ from sqlalchemy import delete, func, select
 
 from app.config import settings
 from app.deps import CurrentUser, DbSession
-from app.errors import AuthError, ConflictError, ValidationError
+from app.errors import AuthError, ConflictError, ForbiddenError, ValidationError
 from app.logging_config import get_logger
 from app.models import BrandProfile, PasswordResetToken, PaymentCharge, User
 from app.rate_limit import limiter
@@ -162,6 +164,45 @@ def setup_account(
         "account_setup_from_charge",
         extra={"user_id": str(user.id), "charge_id": charge.charge_id},
     )
+    return _token_response(user)
+
+
+@router.post("/guest", response_model=TokenResponse, status_code=201)
+@limiter.limit(settings.guest_rate_limit)
+def guest(request: Request, db: DbSession) -> TokenResponse:
+    """Mint a throwaway account so the app opens without a login.
+
+    Each caller gets their own row, so one visitor never sees another's videos
+    or brand. The account is real in every respect except that nobody knows its
+    password: a random one is hashed and discarded, which keeps
+    `users.password_hash` NOT NULL without leaving a credential that could be
+    guessed. A guest who wants to keep their work can set a password through
+    the ordinary reset flow.
+    """
+    if not settings.guest_sessions_enabled:
+        raise ForbiddenError("Guest sessions are disabled")
+
+    # Collision-proof without a uniqueness retry loop, under a subdomain nobody
+    # receives mail on. `.example` is reserved by RFC 2606 for exactly this and
+    # can never be registered.
+    #
+    # NOT `.invalid` (also RFC 2606) and NOT `.local` (mDNS), tempting as both
+    # are: EmailStr rejects special-use names, so UserOut fails to serialise and
+    # the endpoint 500s after having already committed the row.
+    suffix = uuid.uuid4().hex
+    user = User(
+        name="Guest",
+        email=f"guest-{suffix}@guest.aseelo.example",
+        password_hash=hash_password(secrets.token_urlsafe(32)),
+        is_guest=True,
+    )
+    db.add(user)
+    db.flush()
+    db.add(BrandProfile(user_id=user.id, brand_name="My Brand"))
+    db.commit()
+    db.refresh(user)
+
+    logger.info("guest_session_created", extra={"user_id": str(user.id)})
     return _token_response(user)
 
 

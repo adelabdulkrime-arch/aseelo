@@ -55,6 +55,9 @@ class UserOut(ORMModel):
     email: EmailStr
     role: UserRole
     is_active: bool
+    # Lets the UI offer "keep your work - create a real account" instead of
+    # showing a guest an email address they never chose.
+    is_guest: bool = False
     created_at: datetime
 
 
