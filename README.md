@@ -204,6 +204,49 @@ which charge references exist. An address that already has an account gets a 409
 charge is left unspent: paying with someone else's email must not set that account's password.
 See [docs/api.md](docs/api.md#post-apiauthsetup-account).
 
+## Guest sessions
+
+`GUEST_SESSIONS_ENABLED=true` lets the app open without a login: `AuthProvider`
+calls `POST /api/auth/guest`, which creates an isolated throwaway account with its
+own brand profile and returns a real JWT. **Off by default in every production
+file** — turn it on per environment.
+
+The session has to come from the server. A user object invented in the client
+would render a dashboard whose every request 401s: signed in to look at, loading
+nothing. Guests are flagged `is_guest`, so Settings offers "create a permanent
+account" instead of showing the synthetic `@guest.aseelo.example` address.
+
+Guests are cheaper on purpose, because duration drives render cost:
+
+| | Guest | Registered |
+| --- | --- | --- |
+| Max video duration | `GUEST_MAX_VIDEO_DURATION_SECONDS` (20 s) | `MAX_VIDEO_DURATION_SECONDS` |
+| Sessions per hour | `GUEST_RATE_LIMIT` (2) | n/a |
+
+The guest ceiling is clamped by `min()` against the global one, so misconfiguring
+it can never *raise* the limit for anybody.
+
+Guest rows accumulate for as long as the endpoint is enabled. Reclaim them —
+accounts, videos, jobs, brand profiles **and the media on disk**:
+
+```bash
+docker compose run --rm backend python -m scripts.prune_guests --dry-run
+docker compose run --rm backend python -m scripts.prune_guests
+```
+
+Files are deleted before the database rows on purpose: the rows are the only
+record of which storage keys belong to whom, so dropping them first and failing
+half way leaves media nobody can attribute or ever collect. Retention is
+`GUEST_RETENTION_DAYS` (7).
+
+### Sizing
+
+Measured with the worker pinned to one core, rendering a 6-second clip:
+**105 s wall time (~17.6× realtime), 105% CPU, 877 MiB peak RSS**. The worker
+therefore carries `mem_limit: 1g` in both production compose files — above the
+measured peak, but low enough that a runaway render is killed alone rather than
+pushing the host into OOM. Do not tighten it below ~900 MiB.
+
 ## Next phase
 
 1. Frontend component tests — the UI has been verified by hand against the live API, but has no

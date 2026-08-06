@@ -50,6 +50,11 @@ x-app-env: &app-env
   PASSWORD_RESET_TOKEN_TTL_MINUTES: ${PASSWORD_RESET_TOKEN_TTL_MINUTES:-60}
   PASSWORD_RESET_RATE_LIMIT: ${PASSWORD_RESET_RATE_LIMIT:-5/hour}
   SETUP_ACCOUNT_RATE_LIMIT: ${SETUP_ACCOUNT_RATE_LIMIT:-10/hour}
+  # Default false: a guest can queue a render, and one render saturates a core.
+  GUEST_SESSIONS_ENABLED: ${GUEST_SESSIONS_ENABLED:-false}
+  GUEST_RATE_LIMIT: ${GUEST_RATE_LIMIT:-2/hour}
+  GUEST_RETENTION_DAYS: ${GUEST_RETENTION_DAYS:-7}
+  GUEST_MAX_VIDEO_DURATION_SECONDS: ${GUEST_MAX_VIDEO_DURATION_SECONDS:-20}
   SMTP_HOST: ${SMTP_HOST:-}
   SMTP_PORT: ${SMTP_PORT:-587}
   SMTP_USERNAME: ${SMTP_USERNAME:-}
@@ -132,6 +137,14 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     command: ["/app/entrypoint.sh", "worker"]
+    # Measured peak during a real render, with the container pinned to one core:
+    # 877 MiB. 1 GiB leaves ~15% headroom over that, which is enough for an
+    # ordinary render and low enough that a runaway one is killed on its own
+    # instead of taking the host's other services down with it.
+    #
+    # Do NOT tighten this to the 750-800 MiB range: that is BELOW the measured
+    # peak, so every normal render would be OOM-killed.
+    mem_limit: ${WORKER_MEM_LIMIT:-1g}
     networks: [internal]
 
   frontend:
