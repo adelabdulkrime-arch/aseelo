@@ -19,5 +19,10 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  // vitest.config.ts imports vitest/config, which pulls in its own nested copy
+  // of vite - a different one than the root vite dependency this app's build
+  // never otherwise touches. The two Vite types are structurally identical but
+  // nominally distinct, so type-checking this file as part of `next build`
+  // fails whenever their versions drift, over a file the shipped app never runs.
+  "exclude": ["node_modules", "vitest.config.ts"]
 }
