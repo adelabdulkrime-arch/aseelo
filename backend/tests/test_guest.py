@@ -170,3 +170,100 @@ def test_registering_and_logging_in_still_work(client):
     )
     assert login.status_code == 200
     assert login.json()["user"]["is_guest"] is False
+
+
+def test_convert_guest_keeps_the_same_account_and_its_data(client, db, template, tmp_path):
+    """The whole point: videos and brand survive the upgrade because the
+    user_id never changes - only the row's own fields do."""
+    from scripts.smoke_test import make_clip
+
+    guest = client.post("/api/auth/guest").json()
+    headers = {"Authorization": f"Bearer {guest['access_token']}"}
+
+    clip = make_clip(tmp_path / "clip.mp4")
+    payload = {"text_content": "hi", "template_id": str(template.id)}
+    with clip.open("rb") as fh:
+        files = {"video_file": ("clip.mp4", fh, "video/mp4")}
+        video = client.post("/api/videos", headers=headers, data=payload, files=files)
+    assert video.status_code == 201, video.text
+
+    response = client.post(
+        "/api/auth/convert-guest",
+        headers=headers,
+        json={"email": "new-owner@example.com", "password": "SuperSecret123"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["user"]["id"] == guest["user"]["id"]
+    assert body["user"]["email"] == "new-owner@example.com"
+    assert body["user"]["is_guest"] is False
+
+    new_headers = {"Authorization": f"Bearer {body['access_token']}"}
+    videos = client.get("/api/videos", headers=new_headers).json()["items"]
+    assert [v["id"] for v in videos] == [video.json()["id"]]
+
+    login = client.post(
+        "/api/auth/login", json={"email": "new-owner@example.com", "password": "SuperSecret123"}
+    )
+    assert login.status_code == 200
+    assert login.json()["user"]["id"] == guest["user"]["id"]
+
+
+def test_convert_guest_requires_authentication(client):
+    response = client.post(
+        "/api/auth/convert-guest",
+        json={"email": "someone@example.com", "password": "SuperSecret123"},
+    )
+    assert response.status_code == 401
+
+
+def test_convert_guest_refuses_a_real_account(client):
+    from .conftest import register
+
+    account = register(client)
+    response = client.post(
+        "/api/auth/convert-guest",
+        headers=account["headers"],
+        json={"email": "someone-else@example.com", "password": "SuperSecret123"},
+    )
+    assert response.status_code == 409
+
+
+def test_convert_guest_refuses_an_email_already_in_use(client):
+    from .conftest import register
+
+    account = register(client)
+    guest = client.post("/api/auth/guest").json()
+    guest_headers = {"Authorization": f"Bearer {guest['access_token']}"}
+
+    response = client.post(
+        "/api/auth/convert-guest",
+        headers=guest_headers,
+        json={"email": account["email"], "password": "SuperSecret123"},
+    )
+    assert response.status_code == 409
+
+    # The guest row must be untouched by the failed attempt.
+    me = client.get("/api/auth/me", headers=guest_headers)
+    assert me.json()["is_guest"] is True
+
+
+def test_convert_guest_lets_the_new_credentials_survive_a_lost_token(client):
+    """The scenario this whole feature exists for: the browser token is gone,
+    but the account (and its data) is reachable again through /login."""
+    guest = client.post("/api/auth/guest").json()
+    headers = {"Authorization": f"Bearer {guest['access_token']}"}
+
+    client.post(
+        "/api/auth/convert-guest",
+        headers=headers,
+        json={"email": "recoverable@example.com", "password": "SuperSecret123"},
+    )
+
+    # Simulate a cleared browser: no token carried over, only the credentials.
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "recoverable@example.com", "password": "SuperSecret123"},
+    )
+    assert login.status_code == 200
+    assert login.json()["user"]["is_guest"] is False

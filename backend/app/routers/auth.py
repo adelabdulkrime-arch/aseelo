@@ -19,6 +19,7 @@ from app.logging_config import get_logger
 from app.models import BrandProfile, PasswordResetToken, PaymentCharge, User
 from app.rate_limit import limiter
 from app.schemas import (
+    ConvertGuestRequest,
     ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
@@ -203,6 +204,35 @@ def guest(request: Request, db: DbSession) -> TokenResponse:
     db.refresh(user)
 
     logger.info("guest_session_created", extra={"user_id": str(user.id)})
+    return _token_response(user)
+
+
+@router.post("/convert-guest", response_model=TokenResponse)
+@limiter.limit(settings.auth_rate_limit)
+def convert_guest(
+    request: Request, payload: ConvertGuestRequest, db: DbSession, user: CurrentUser
+) -> TokenResponse:
+    """Turn the caller's own guest session into a real account, in place.
+
+    Updates the same row rather than creating a new one, so every video and
+    the brand profile - all foreign-keyed to this user_id - stay attached
+    without being copied. The alternative, /register, mints a fresh user_id
+    and would silently orphan everything the guest made.
+    """
+    if not user.is_guest:
+        raise ConflictError("This account is already registered")
+
+    email = payload.email.lower()
+    if db.scalar(select(User).where(func.lower(User.email) == email, User.id != user.id)) is not None:
+        raise ConflictError("An account with this email already exists")
+
+    user.email = email
+    user.password_hash = hash_password(payload.password)
+    user.is_guest = False
+    db.commit()
+    db.refresh(user)
+
+    logger.info("guest_converted_to_account", extra={"user_id": str(user.id)})
     return _token_response(user)
 
 

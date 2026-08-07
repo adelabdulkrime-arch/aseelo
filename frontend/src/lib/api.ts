@@ -153,6 +153,14 @@ export const api = {
       auth: false,
     }),
 
+  /** Turn the caller's own guest session into a real account, in place.
+   *
+   * Same user_id, so every video and the brand profile stay attached -
+   * unlike register(), which would start a blank one.
+   */
+  convertGuest: (input: { email: string; password: string }) =>
+    request<TokenResponse>("/api/auth/convert-guest", { method: "POST", body: input }),
+
   /** Mint a throwaway session so the app opens without a login.
    *
    * 403 when the deployment has guest sessions disabled, 429 when the rate

@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import { useState, type FormEvent } from "react";
 
-import { LoadingState } from "@/components/ui";
+import { Alert, Field, LoadingState, Spinner } from "@/components/ui";
+import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { useI18n, type Locale } from "@/lib/i18n";
@@ -12,6 +13,87 @@ const LOCALES: { value: Locale; label: string }[] = [
   { value: "ar", label: "العربية" },
   { value: "en", label: "English" },
 ];
+
+function GuestUpgradeForm() {
+  const { t } = useI18n();
+  const { signIn } = useAuth();
+
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+
+  if (done) return <Alert kind="success">{t("guestConvertSuccess")}</Alert>;
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+
+    if (form.password.length < 8) {
+      setFieldErrors({ password: t("passwordTooShort") });
+      return;
+    }
+    setFieldErrors({});
+    setSubmitting(true);
+    try {
+      const result = await api.convertGuest(form);
+      signIn(result.access_token, result.user);
+      setDone(true);
+    } catch (cause) {
+      if (cause instanceof ApiError) {
+        setError(cause.message);
+        const mapped: Record<string, string> = {};
+        for (const key of ["email", "password"] as const) {
+          const message = cause.fieldError(key);
+          if (message) mapped[key] = message;
+        }
+        setFieldErrors(mapped);
+      } else {
+        setError(t("somethingWrong"));
+      }
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3" noValidate>
+      {error && <Alert kind="error">{error}</Alert>}
+
+      <Field label={t("email")} htmlFor="guest-email" error={fieldErrors.email}>
+        <input
+          id="guest-email"
+          type="email"
+          className="input"
+          value={form.email}
+          onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+          autoComplete="email"
+          required
+          dir="ltr"
+        />
+      </Field>
+
+      <Field label={t("password")} htmlFor="guest-password" error={fieldErrors.password}>
+        <input
+          id="guest-password"
+          type="password"
+          className="input"
+          value={form.password}
+          onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+          autoComplete="new-password"
+          required
+          minLength={8}
+          dir="ltr"
+        />
+      </Field>
+
+      <button type="submit" className="btn-primary w-full" disabled={submitting}>
+        {submitting && <Spinner className="h-4 w-4" />}
+        {t("guestCreateAccount")}
+      </button>
+    </form>
+  );
+}
 
 export default function SettingsPage() {
   const { t, locale, setLocale } = useI18n();
@@ -26,14 +108,14 @@ export default function SettingsPage() {
 
       {/* A guest never chose their address, so showing the synthetic
           `@guest.invalid` one would be confusing. Offer the way out instead:
-          their work lives on this browser's token alone and is lost with it. */}
+          their work lives on this browser's token alone and is lost with it.
+          Converts the same account in place (same user_id) so their videos
+          and brand carry over - /register would start a blank one instead. */}
       {user.is_guest && (
         <section className="card border-accent/40 bg-accent/5 p-5">
           <h2 className="mb-1 font-bold">{t("guestTitle")}</h2>
           <p className="mb-3 text-sm text-ink-muted">{t("guestBody")}</p>
-          <Link href="/register" className="btn-primary inline-flex">
-            {t("guestCreateAccount")}
-          </Link>
+          <GuestUpgradeForm />
         </section>
       )}
 

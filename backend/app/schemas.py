@@ -267,6 +267,18 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 
+class ConvertGuestRequest(BaseModel):
+    """Turn the caller's own guest session into a real account, in place.
+
+    No `name`: a guest already has one ("Guest"), and this screen exists to
+    save their work, not to collect a profile. They can rename themselves in
+    Settings afterwards, same as anyone else.
+    """
+
+    email: EmailStr
+    password: Password
+
+
 class SetupAccountRequest(BaseModel):
     """Redeem a paid charge into an account.
 

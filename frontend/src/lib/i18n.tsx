@@ -116,6 +116,10 @@ const STRINGS = {
     en: "Your videos live in this browser only. Create an account to keep them and reach them from any device.",
   },
   guestCreateAccount: { ar: "إنشاء حساب دائم", en: "Create a permanent account" },
+  guestConvertSuccess: {
+    ar: "تم إنشاء حسابك الدائم بنجاح. جميع فيديوهاتك محفوظة.",
+    en: "Your permanent account is ready. All your videos are kept.",
+  },
 
   // ---- nav ----
   dashboard: { ar: "لوحة التحكم", en: "Dashboard" },
