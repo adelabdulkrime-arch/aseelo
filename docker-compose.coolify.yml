@@ -41,7 +41,7 @@ x-app-env: &app-env
   # The only way into the app - there is no login. Default true; false is an
   # emergency brake for a host that cannot keep up, not a normal setting.
   GUEST_SESSIONS_ENABLED: ${GUEST_SESSIONS_ENABLED:-true}
-  GUEST_RATE_LIMIT: ${GUEST_RATE_LIMIT:-2/hour}
+  GUEST_RATE_LIMIT: ${GUEST_RATE_LIMIT:-30/hour}
   GUEST_RETENTION_DAYS: ${GUEST_RETENTION_DAYS:-7}
   GUEST_MAX_VIDEO_DURATION_SECONDS: ${GUEST_MAX_VIDEO_DURATION_SECONDS:-20}
   # ---- 1-core defaults ----

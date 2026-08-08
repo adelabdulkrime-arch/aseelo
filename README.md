@@ -183,15 +183,14 @@ visitor to reach.
 The session has to come from the server. A user object invented in the client would render a
 dashboard whose every request 401s: signed in to look at, loading nothing.
 
-Guests are cheaper on purpose, because duration drives render cost:
+Video duration is capped tighter for guests, because duration drives render cost:
+`GUEST_MAX_VIDEO_DURATION_SECONDS` (20 s), clamped by `min()` against
+`MAX_VIDEO_DURATION_SECONDS` so misconfiguring it can never *raise* the limit for anybody.
 
-| | Guest ceiling |
-| --- | --- |
-| Max video duration | `GUEST_MAX_VIDEO_DURATION_SECONDS` (20 s), clamped to `MAX_VIDEO_DURATION_SECONDS` |
-| Sessions per hour | `GUEST_RATE_LIMIT` (2) |
-
-The ceiling is clamped by `min()` against the global one, so misconfiguring it can never *raise*
-the limit for anybody.
+`GUEST_RATE_LIMIT` (default `30/hour`) is a different kind of guard: it caps how many sessions one
+IP can *create*, not how many renders it can queue - a guest session on its own does nothing to the
+render queue. It exists to stop `users` filling up with spam rows, not to protect CPU. Actual render
+load is capped separately by `UPLOAD_RATE_LIMIT` on `POST /api/videos`.
 
 Guest rows accumulate for as long as the endpoint is enabled — which, with no other account type,
 is the entire lifetime of the deployment. Reclaim them — accounts, videos, jobs, brand profiles

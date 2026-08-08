@@ -35,6 +35,20 @@ const STRINGS = {
   optional: { ar: "اختياري", en: "optional" },
   somethingWrong: { ar: "حدث خطأ ما", en: "Something went wrong" },
 
+  // ---- session errors ----
+  sessionRateLimited: {
+    ar: "عدد كبير من الجلسات فُتحت من هذا المتصفح خلال فترة قصيرة. حاول مرة أخرى بعد قليل.",
+    en: "Too many sessions were started from this browser in a short time. Try again shortly.",
+  },
+  sessionDisabled: {
+    ar: "التطبيق غير متاح للاستخدام حالياً. حاول لاحقاً.",
+    en: "The app is not accepting new sessions right now. Please try again later.",
+  },
+  sessionUnknownError: {
+    ar: "تعذّر فتح جلسة جديدة. تحقّق من اتصالك وحاول مرة أخرى.",
+    en: "Could not start a session. Check your connection and try again.",
+  },
+
   // ---- shared field labels ----
   name: { ar: "الاسم", en: "Name" },
 

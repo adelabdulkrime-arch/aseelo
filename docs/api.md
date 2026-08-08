@@ -48,7 +48,10 @@ No body. Mints a throwaway account and a default brand profile, and returns a `T
 
 Returns 403 `forbidden` when `GUEST_SESSIONS_ENABLED` is off (an emergency brake for a host that
 cannot keep up with render load, not a normal state). Rate limited by `GUEST_RATE_LIMIT` (default
-`2/hour`) — each call is a real row and a real render slot.
+`30/hour`) — this caps session creation, not rendering: a session on its own queues nothing. It
+exists so one IP cannot fill `users` with spam rows, not to protect the render queue, which
+`UPLOAD_RATE_LIMIT` on `POST /api/videos` covers separately. A normal visitor calls this once per
+browser; `AuthProvider` only calls it again when the stored token is gone.
 
 Guest accounts older than `GUEST_RETENTION_DAYS` (default 7) are reclaimed by
 `scripts.prune_guests`, which deletes the account, its videos, and their stored files.

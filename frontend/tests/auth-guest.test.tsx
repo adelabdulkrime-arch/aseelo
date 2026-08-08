@@ -37,9 +37,13 @@ const GUEST = {
 const SESSION = { access_token: "guest-tok", token_type: "bearer", expires_in: 86400, user: GUEST };
 
 function Probe() {
-  const { user, loading } = useAuth();
+  const { user, loading, error } = useAuth();
   if (loading) return <span>loading</span>;
-  return <span data-testid="who">{user ? `${user.name}:${user.is_guest}` : "anonymous"}</span>;
+  return (
+    <span data-testid="who">
+      {user ? `${user.name}:${user.is_guest}` : `anonymous:${error ?? "none"}`}
+    </span>
+  );
 }
 
 function renderAuth() {
@@ -75,21 +79,31 @@ describe("automatic guest session", () => {
     expect(guestMock).not.toHaveBeenCalled();
   });
 
-  it("stays anonymous when the deployment has guests disabled (403)", async () => {
+  it("classifies a disabled deployment (403) so the UI can say so", async () => {
     guestMock.mockRejectedValue(new ApiError(403, "forbidden", "Guest sessions are disabled"));
     renderAuth();
 
-    expect(await screen.findByTestId("who")).toHaveTextContent("anonymous");
+    expect(await screen.findByTestId("who")).toHaveTextContent("anonymous:disabled");
     expect(getToken()).toBeNull();
   });
 
-  it("stays anonymous when rate limited (429) rather than hanging on loading", async () => {
+  it("classifies a rate limit (429) rather than hanging on loading", async () => {
     guestMock.mockRejectedValue(new ApiError(429, "rate_limited", "Too many requests"));
     renderAuth();
 
     // Loading must resolve either way, or the route guards never run and the
-    // user sits on a spinner forever.
-    await waitFor(() => expect(screen.getByTestId("who")).toHaveTextContent("anonymous"));
+    // user sits on a spinner forever - this is the bug being guarded against:
+    // a rate-limited visitor used to see no error and no way out.
+    await waitFor(() =>
+      expect(screen.getByTestId("who")).toHaveTextContent("anonymous:rate_limited"),
+    );
+  });
+
+  it("falls back to a generic error for anything else", async () => {
+    guestMock.mockRejectedValue(new Error("network down"));
+    renderAuth();
+
+    expect(await screen.findByTestId("who")).toHaveTextContent("anonymous:unknown");
   });
 
   it("drops a token the server no longer accepts", async () => {
@@ -97,7 +111,7 @@ describe("automatic guest session", () => {
     meMock.mockRejectedValue(new ApiError(401, "unauthorized", "Invalid token"));
     renderAuth();
 
-    expect(await screen.findByTestId("who")).toHaveTextContent("anonymous");
+    expect(await screen.findByTestId("who")).toHaveTextContent("anonymous:unknown");
     expect(getToken()).toBeNull();
   });
 });

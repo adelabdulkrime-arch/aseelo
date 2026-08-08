@@ -74,12 +74,13 @@ class Settings(BaseSettings):
     # for a one-core host: a render saturates the whole machine, so this is the
     # knob to shut off new sessions without taking the app down entirely.
     guest_sessions_enabled: bool = True
-    # Each guest is a real row and a real render slot, so this is deliberately
-    # far tighter than the other auth limits.
-    # Measured: a 6s clip takes ~105s on one saturated core (~17.6x realtime).
-    # At 5/hour with the full 45s ceiling, guests could queue more render work
-    # than an hour contains, so the queue would only ever grow.
-    guest_rate_limit: str = "2/hour"
+    # This gates session creation, not rendering - a guest session on its own
+    # queues nothing. Render load is capped separately by upload_rate_limit on
+    # POST /api/videos, so this only needs to be tight enough to stop the
+    # `users` table from being spammed with empty rows, not tight enough to
+    # protect the render queue. A visitor normally calls this once per browser
+    # (AuthProvider only re-requests it when the stored token is gone).
+    guest_rate_limit: str = "30/hour"
     # Guests only. Registered users keep max_video_duration_seconds.
     guest_max_video_duration_seconds: int = 20
     # How long a guest's work survives before scripts.prune_guests reclaims it.

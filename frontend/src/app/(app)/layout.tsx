@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { LanguageToggle } from "@/components/language-toggle";
 import { InstallBanner } from "@/components/pwa-banners";
-import { LoadingState, Logo } from "@/components/ui";
+import { LoadingState, Logo, SessionErrorState } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { useI18n, type StringKey } from "@/lib/i18n";
 
@@ -19,16 +19,16 @@ const NAV: { href: string; key: StringKey; icon: string }[] = [
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, error, signOut, retry } = useAuth();
   const { t } = useI18n();
-  const router = useRouter();
   const pathname = usePathname();
 
-  useEffect(() => {
-    // Only reached when no session could be established at all (guests
-    // disabled, or rate limited) - there is no login page to fall back to.
-    if (!loading && !user) router.replace("/");
-  }, [loading, user, router]);
+  // No login page to fall back to, so a session that never got established
+  // (guests disabled, or rate limited) gets a real message here instead of
+  // bouncing between routes on an endless spinner.
+  if (!loading && !user && error) {
+    return <SessionErrorState error={error} onRetry={retry} />;
+  }
 
   if (loading || !user) {
     return (

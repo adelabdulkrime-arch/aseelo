@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import type { AuthErrorKind } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import type { VideoStatus } from "@/lib/types";
 
@@ -44,6 +45,29 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
         </button>
       )}
     </div>
+  );
+}
+
+const SESSION_ERROR_KEYS: Record<AuthErrorKind, "sessionRateLimited" | "sessionDisabled" | "sessionUnknownError"> = {
+  rate_limited: "sessionRateLimited",
+  disabled: "sessionDisabled",
+  unknown: "sessionUnknownError",
+};
+
+/** Shown when AuthProvider could not establish any session at all - the dead
+ *  end that used to be an infinite loading spinner with nothing behind it. */
+export function SessionErrorState({
+  error,
+  onRetry,
+}: {
+  error: AuthErrorKind;
+  onRetry: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <main className="grid min-h-screen place-items-center p-4">
+      <ErrorState message={t(SESSION_ERROR_KEYS[error])} onRetry={onRetry} />
+    </main>
   );
 }
 
@@ -159,9 +183,9 @@ export function Field({
 export function Logo({ className = "" }: { className?: string }) {
   return (
     <span className={`inline-flex items-center gap-2 font-extrabold tracking-tight ${className}`}>
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink text-sm text-accent">
-        V
-      </span>
+      {/* eslint-disable-next-line @next/next/no-img-element -- matches the
+          plain <img> used for other static assets in this codebase. */}
+      <img src="/icons/icon-192.png" alt="" className="h-8 w-8 rounded-lg" />
       <span>V.onemedia</span>
     </span>
   );
