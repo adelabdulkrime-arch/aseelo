@@ -41,7 +41,7 @@ export function apiOrigin(): string {
   return (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 }
 
-export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "ASEELO";
+export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "V.onemedia";
 
 const TOKEN_KEY = "aseelo.token";
 

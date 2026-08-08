@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # ---------- Core ----------
     app_env: Literal["development", "staging", "production", "test"] = "development"
-    app_name: str = "ASEELO"
+    app_name: str = "V.onemedia"
     log_level: str = "INFO"
 
     # ---------- Database ----------

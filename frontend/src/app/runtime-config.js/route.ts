@@ -20,7 +20,7 @@ export function GET() {
     /\/+$/,
     "",
   );
-  const appName = process.env.APP_NAME ?? process.env.NEXT_PUBLIC_APP_NAME ?? "ASEELO";
+  const appName = process.env.APP_NAME ?? process.env.NEXT_PUBLIC_APP_NAME ?? "V.onemedia";
 
   const body = `window.__ASEELO_CONFIG__=${JSON.stringify({ apiUrl, appName })};`;
 

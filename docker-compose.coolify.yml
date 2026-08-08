@@ -151,7 +151,7 @@ services:
       # from Coolify's environment tab — an entirely absent value would fall
       # back to the build-time default instead.
       API_PUBLIC_URL: ${API_PUBLIC_URL:-}
-      APP_NAME: ${APP_NAME:-ASEELO}
+      APP_NAME: ${APP_NAME:-V.onemedia}
     expose:
       - "3000"
     depends_on:

@@ -29,7 +29,7 @@ WORKDIR /app
 # nothing throws. The dev compose passes this arg explicitly, so local
 # development is unaffected.
 ARG NEXT_PUBLIC_API_URL=
-ARG NEXT_PUBLIC_APP_NAME=ASEELO
+ARG NEXT_PUBLIC_APP_NAME=V.onemedia
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME \
     NEXT_TELEMETRY_DISABLED=1

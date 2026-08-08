@@ -143,7 +143,7 @@ services:
       # domain needs a restart, not a rebuild. Leave EMPTY when the API is
       # reverse-proxied under the same domain (then there is no CORS at all).
       API_PUBLIC_URL: ${API_PUBLIC_URL:-}
-      APP_NAME: ${APP_NAME:-ASEELO}
+      APP_NAME: ${APP_NAME:-V.onemedia}
     expose:
       - "3000"
     depends_on:

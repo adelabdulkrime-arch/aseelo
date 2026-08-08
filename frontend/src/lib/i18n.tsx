@@ -147,8 +147,8 @@ const STRINGS = {
   // ---- PWA ----
   installTitle: { ar: "ثبّت التطبيق", en: "Install the app" },
   installBody: {
-    ar: "أضف أصيلو إلى شاشتك الرئيسية للوصول السريع والعمل بملء الشاشة",
-    en: "Add ASEELO to your home screen for quick, full-screen access",
+    ar: "أضف في ون ميديا إلى شاشتك الرئيسية للوصول السريع والعمل بملء الشاشة",
+    en: "Add V.onemedia to your home screen for quick, full-screen access",
   },
   install: { ar: "تثبيت", en: "Install" },
   installed: { ar: "تم تثبيت التطبيق", en: "App installed" },

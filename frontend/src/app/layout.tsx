@@ -5,7 +5,7 @@ import { Providers } from "@/components/providers";
 
 import "./globals.css";
 
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "ASEELO";
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "V.onemedia";
 
 export const metadata: Metadata = {
   title: { default: `${APP_NAME} Video`, template: `%s · ${APP_NAME}` },

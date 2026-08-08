@@ -32,7 +32,7 @@ PREVIEW_WIDTH = 480
 # in how they arrange the contact block, and empty fields make those layers skip
 # rendering, which would make all three previews look alike.
 PREVIEW_BRAND = BrandContext(
-    brand_name="أصيلو",
+    brand_name="في ون ميديا",
     primary_color="#0F172A",
     secondary_color="#1E88E5",
     accent_color="#F5B700",

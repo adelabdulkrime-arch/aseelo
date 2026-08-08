@@ -1,4 +1,4 @@
-/* ASEELO service worker — offline shell only.
+/* V.onemedia service worker — offline shell only.
  *
  * Deliberately conservative: API responses and rendered media are never cached,
  * because a stale job status or a stale video would actively mislead the user.

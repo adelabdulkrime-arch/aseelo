@@ -45,7 +45,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
-          <Link href="/dashboard" aria-label="ASEELO">
+          <Link href="/dashboard" aria-label="V.onemedia">
             <Logo />
           </Link>
 
