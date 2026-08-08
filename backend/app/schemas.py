@@ -5,15 +5,13 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.models import JobStatus, UserRole, VideoStatus
 
 HEX_COLOR = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
-
-Password = Annotated[str, Field(min_length=8, max_length=128)]
 
 
 class ORMModel(BaseModel):
@@ -23,32 +21,6 @@ class ORMModel(BaseModel):
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
-class RegisterRequest(BaseModel):
-    name: str = Field(min_length=2, max_length=120)
-    email: EmailStr
-    password: Password
-    confirm_password: Password
-
-    @field_validator("name")
-    @classmethod
-    def _strip_name(cls, value: str) -> str:
-        value = value.strip()
-        if len(value) < 2:
-            raise ValueError("Name must be at least 2 characters")
-        return value
-
-    @model_validator(mode="after")
-    def _passwords_match(self) -> "RegisterRequest":
-        if self.password != self.confirm_password:
-            raise ValueError("Passwords do not match")
-        return self
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=1, max_length=128)
-
-
 class UserOut(ORMModel):
     id: uuid.UUID
     name: str
@@ -261,47 +233,3 @@ class DashboardStats(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
-
-
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
-
-
-class ConvertGuestRequest(BaseModel):
-    """Turn the caller's own guest session into a real account, in place.
-
-    No `name`: a guest already has one ("Guest"), and this screen exists to
-    save their work, not to collect a profile. They can rename themselves in
-    Settings afterwards, same as anyone else.
-    """
-
-    email: EmailStr
-    password: Password
-
-
-class SetupAccountRequest(BaseModel):
-    """Redeem a paid charge into an account.
-
-    No `confirm_password`, unlike registration: the setup page shows a single
-    password field, because the customer arrives here from a payment receipt
-    and a second box is one more thing between them and the product. A mistyped
-    password is recoverable through the ordinary reset flow.
-    """
-
-    # Both are required and both are checked: the charge reference alone does
-    # not authorise account creation, the pair does.
-    charge_id: str = Field(min_length=6, max_length=128)
-    email: EmailStr
-    password: Password
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str = Field(min_length=16, max_length=256)
-    password: Password
-    confirm_password: Password
-
-    @model_validator(mode="after")
-    def _passwords_match(self) -> "ResetPasswordRequest":
-        if self.password != self.confirm_password:
-            raise ValueError("Passwords do not match")
-        return self

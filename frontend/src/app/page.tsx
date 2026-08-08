@@ -13,11 +13,9 @@ export default function IndexPage() {
   useEffect(() => {
     if (loading) return;
     // Straight to the app. AuthProvider establishes a guest session while
-    // `loading` is true, so by here a visitor with no account usually has one.
-    // /login remains reachable, just never forced: it is only the fallback for
-    // when a session could not be established at all (guests disabled, or rate
-    // limited).
-    router.replace(user ? "/dashboard" : "/login");
+    // `loading` is true, so by here a visitor almost always has one. There is
+    // no login page: a visitor with no session just stays here, loading.
+    if (user) router.replace("/dashboard");
   }, [user, loading, router]);
 
   return (

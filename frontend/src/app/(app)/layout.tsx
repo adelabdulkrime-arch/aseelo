@@ -25,9 +25,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    // Only reached when no session could be established at all - AuthProvider
-    // has already tried a guest session by the time `loading` clears.
-    if (!loading && !user) router.replace("/login");
+    // Only reached when no session could be established at all (guests
+    // disabled, or rate limited) - there is no login page to fall back to.
+    if (!loading && !user) router.replace("/");
   }, [loading, user, router]);
 
   if (loading || !user) {
@@ -73,7 +73,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               onClick={signOut}
               className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-ink-soft transition hover:bg-slate-50"
             >
-              {t("logout")}
+              {t("startOver")}
             </button>
           </div>
         </div>

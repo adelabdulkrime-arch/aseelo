@@ -1,8 +1,7 @@
-"""Idempotent startup seeding: templates and an optional admin user.
+"""Idempotent startup seeding: templates and their preview thumbnails.
 
 Run via ``python -m app.services.seed`` (see entrypoint.sh). Safe to run on
-every boot - templates are upserted by slug and the admin user is only
-created if it does not already exist.
+every boot - templates are upserted by slug.
 """
 
 from __future__ import annotations
@@ -15,11 +14,9 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.config import settings
 from app.database import session_scope
 from app.logging_config import configure_logging, get_logger
-from app.models import Template, User, UserRole
-from app.security import hash_password
+from app.models import Template
 from app.storage import get_storage
 from app.video.compose import BrandContext, render_preview
 from app.video.templates import TEMPLATE_SEEDS
@@ -120,30 +117,11 @@ def seed_template_previews() -> None:
                 logger.exception("template_preview_failed", extra={"slug": slug, "error": str(exc)})
 
 
-def seed_admin() -> None:
-    if not settings.seed_admin_email or not settings.seed_admin_password:
-        return
-    with session_scope() as db:
-        existing = db.scalar(select(User).where(User.email == settings.seed_admin_email))
-        if existing is not None:
-            return
-        db.add(
-            User(
-                name="Administrator",
-                email=settings.seed_admin_email,
-                password_hash=hash_password(settings.seed_admin_password),
-                role=UserRole.ADMIN,
-            )
-        )
-        logger.info("admin_seeded", extra={"email": settings.seed_admin_email})
-
-
 def main() -> None:
     configure_logging()
     seed_templates()
     # After seed_templates: the rows must exist before they can be given a URL.
     seed_template_previews()
-    seed_admin()
     logger.info("seed_complete")
 
 

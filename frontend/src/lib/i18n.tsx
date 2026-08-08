@@ -35,91 +35,8 @@ const STRINGS = {
   optional: { ar: "اختياري", en: "optional" },
   somethingWrong: { ar: "حدث خطأ ما", en: "Something went wrong" },
 
-  // ---- auth ----
-  login: { ar: "تسجيل الدخول", en: "Log in" },
-  loginTitle: { ar: "تسجيل الدخول", en: "Welcome back" },
-  loginSubtitle: {
-    ar: "سجّل الدخول للمتابعة إلى حسابك",
-    en: "Log in to continue to your account",
-  },
-  register: { ar: "إنشاء حساب", en: "Create account" },
-  registerTitle: { ar: "إنشاء حساب جديد", en: "Create your account" },
-  registerSubtitle: {
-    ar: "ابدأ بإنشاء فيديوهات تحمل هويتك التجارية",
-    en: "Start creating videos with your own brand",
-  },
+  // ---- shared field labels ----
   name: { ar: "الاسم", en: "Name" },
-  email: { ar: "البريد الإلكتروني", en: "Email" },
-  password: { ar: "كلمة المرور", en: "Password" },
-  confirmPassword: { ar: "تأكيد كلمة المرور", en: "Confirm password" },
-  forgotPassword: { ar: "نسيت كلمة المرور؟", en: "Forgot password?" },
-  noAccount: { ar: "ليس لديك حساب؟", en: "No account yet?" },
-  haveAccount: { ar: "لديك حساب بالفعل؟", en: "Already have an account?" },
-  logout: { ar: "تسجيل الخروج", en: "Log out" },
-  passwordsDoNotMatch: { ar: "كلمتا المرور غير متطابقتين", en: "Passwords do not match" },
-  passwordTooShort: {
-    ar: "كلمة المرور يجب ألا تقل عن ٨ أحرف",
-    en: "Password must be at least 8 characters",
-  },
-  forgotPasswordTitle: { ar: "استعادة كلمة المرور", en: "Reset your password" },
-  forgotPasswordSubtitle: {
-    ar: "أدخل بريدك الإلكتروني وسنرسل لك رابطاً لإعادة التعيين.",
-    en: "Enter your email and we'll send you a reset link.",
-  },
-  sendResetLink: { ar: "إرسال الرابط", en: "Send reset link" },
-  // Deliberately non-committal: the API does not reveal whether the address is
-  // registered, so this copy must not either.
-  resetLinkSent: {
-    ar: "إن كان هناك حساب بهذا البريد، فقد أُرسل إليه رابط لإعادة التعيين. تحقّق من بريدك.",
-    en: "If an account exists for that address, a reset link has been sent. Check your inbox.",
-  },
-  backToLogin: { ar: "العودة لتسجيل الدخول", en: "Back to sign in" },
-  resetPasswordTitle: { ar: "تعيين كلمة مرور جديدة", en: "Set a new password" },
-  resetPasswordSubtitle: {
-    ar: "اختر كلمة مرور جديدة لحسابك.",
-    en: "Choose a new password for your account.",
-  },
-  newPassword: { ar: "كلمة المرور الجديدة", en: "New password" },
-  resetPasswordSubmit: { ar: "حفظ كلمة المرور", en: "Save password" },
-  resetPasswordDone: {
-    ar: "تم تغيير كلمة المرور. يمكنك تسجيل الدخول الآن.",
-    en: "Your password has been changed. You can sign in now.",
-  },
-  resetTokenMissing: {
-    ar: "الرابط غير صالح أو ناقص. اطلب رابطاً جديداً.",
-    en: "This link is invalid or incomplete. Request a new one.",
-  },
-
-  // ---- post-payment activation ----
-  setupAccountTitle: { ar: "تفعيل حسابك", en: "Activate your account" },
-  setupAccountSubtitle: {
-    ar: "تم استلام دفعتك. اختر كلمة مرور وابدأ فوراً.",
-    en: "Your payment is confirmed. Choose a password and get started.",
-  },
-  setupAccountSubmit: { ar: "حفظ ومتابعة", en: "Save & Proceed" },
-  choosePassword: { ar: "اختر كلمة المرور", en: "Choose a password" },
-  // The email is fixed by the payment: editing it would point the account at an
-  // address that was never paid for, and the API would refuse it anyway.
-  setupEmailLocked: {
-    ar: "هذا هو البريد المستخدم في الدفع ولا يمكن تغييره.",
-    en: "This is the email you paid with and cannot be changed.",
-  },
-  setupLinkInvalid: {
-    ar: "رابط التفعيل غير صالح أو ناقص. تحقّق من الرابط في بريد الإيصال.",
-    en: "This activation link is invalid or incomplete. Check the link in your receipt email.",
-  },
-
-  // ---- guest sessions ----
-  guestTitle: { ar: "أنت تستخدم جلسة ضيف", en: "You are using a guest session" },
-  guestBody: {
-    ar: "فيديوهاتك محفوظة على هذا المتصفح فقط. أنشئ حساباً للاحتفاظ بها والوصول إليها من أي جهاز.",
-    en: "Your videos live in this browser only. Create an account to keep them and reach them from any device.",
-  },
-  guestCreateAccount: { ar: "إنشاء حساب دائم", en: "Create a permanent account" },
-  guestConvertSuccess: {
-    ar: "تم إنشاء حسابك الدائم بنجاح. جميع فيديوهاتك محفوظة.",
-    en: "Your permanent account is ready. All your videos are kept.",
-  },
 
   // ---- nav ----
   dashboard: { ar: "لوحة التحكم", en: "Dashboard" },
@@ -221,7 +138,11 @@ const STRINGS = {
   account: { ar: "الحساب", en: "Account" },
   language: { ar: "اللغة", en: "Language" },
   memberSince: { ar: "عضو منذ", en: "Member since" },
-  role: { ar: "الصلاحية", en: "Role" },
+  startOver: { ar: "بدء جلسة جديدة", en: "Start a new session" },
+  startOverBody: {
+    ar: "هذا يمسح فيديوهاتك وهويتك التجارية الحالية نهائياً ويبدأ بجلسة فارغة.",
+    en: "This permanently clears your current videos and brand, and starts a fresh session.",
+  },
 
   // ---- PWA ----
   installTitle: { ar: "ثبّت التطبيق", en: "Install the app" },

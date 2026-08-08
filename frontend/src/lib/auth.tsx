@@ -39,16 +39,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    /** Open the app without a login, when the backend allows it.
+    /** Open the app without a login - the only way in.
      *
      * The session has to come from the server: every API call carries the JWT
      * and the backend reads the user id out of it. A user object invented here
      * would render a dashboard whose every request 401s - the app would look
      * signed in and load nothing.
      *
-     * A failure is not fatal. Guest sessions are off by default (403) and the
-     * endpoint is rate limited (429); in both cases we simply end up with no
-     * session, and the route guards fall back to /login as before.
+     * A failure is not fatal but there is nowhere to send the caller: if
+     * guest sessions are disabled or rate limited, the route guards just show
+     * a loading state forever rather than a dead end.
      */
     async function start() {
       try {
@@ -85,7 +85,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(() => {
     setToken(null);
     setUser(null);
-    router.replace("/login");
+    // No login page to send the caller to: land on "/", which mints a fresh
+    // guest session on the next mount since there is no token to replay.
+    router.replace("/");
   }, [router]);
 
   const refresh = useCallback(async () => {

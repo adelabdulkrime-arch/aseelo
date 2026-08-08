@@ -38,27 +38,12 @@ x-app-env: &app-env
   S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-536870912}
-  # ---- password reset / mail ----
-  # Only the API sends mail, but these live in the shared block for the same
-  # reason the render settings do: a variable that exists on one of the two
-  # containers and not the other is a silent bug waiting to happen.
-  APP_PUBLIC_URL: ${APP_PUBLIC_URL:-}
-  MAIL_BACKEND: ${MAIL_BACKEND:-console}
-  MAIL_FROM: ${MAIL_FROM:-ASEELO <no-reply@localhost>}
-  PASSWORD_RESET_TOKEN_TTL_MINUTES: ${PASSWORD_RESET_TOKEN_TTL_MINUTES:-60}
-  PASSWORD_RESET_RATE_LIMIT: ${PASSWORD_RESET_RATE_LIMIT:-5/hour}
-  SETUP_ACCOUNT_RATE_LIMIT: ${SETUP_ACCOUNT_RATE_LIMIT:-10/hour}
-  # Default false: a guest can queue a render, and one render saturates a core.
-  GUEST_SESSIONS_ENABLED: ${GUEST_SESSIONS_ENABLED:-false}
+  # The only way into the app - there is no login. Default true; false is an
+  # emergency brake for a host that cannot keep up, not a normal setting.
+  GUEST_SESSIONS_ENABLED: ${GUEST_SESSIONS_ENABLED:-true}
   GUEST_RATE_LIMIT: ${GUEST_RATE_LIMIT:-2/hour}
   GUEST_RETENTION_DAYS: ${GUEST_RETENTION_DAYS:-7}
   GUEST_MAX_VIDEO_DURATION_SECONDS: ${GUEST_MAX_VIDEO_DURATION_SECONDS:-20}
-  SMTP_HOST: ${SMTP_HOST:-}
-  SMTP_PORT: ${SMTP_PORT:-587}
-  SMTP_USERNAME: ${SMTP_USERNAME:-}
-  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-  SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
-  SMTP_SSL: ${SMTP_SSL:-false}
   # ---- 1-core defaults ----
   # Measured on this codebase with the worker pinned to one core: rendering runs
   # at ~14x realtime, so 45 s of video is already ~10 minutes of saturated CPU.

@@ -115,24 +115,6 @@ Optional: `STORAGE_PROVIDER` (`local`/`s3`) plus the `S3_*` group, `WORKER_CONCU
 `MAX_UPLOAD_SIZE`, `MAX_VIDEO_DURATION_SECONDS`, `OUTPUT_CRF`, `OUTPUT_PRESET`,
 `RATE_LIMIT_ENABLED`, `LOG_LEVEL`.
 
-### Password reset mail
-
-Password reset is **off by default**: `MAIL_BACKEND=console` logs the message instead of sending
-it, so nothing is delivered to users. To turn it on:
-
-| Variable | Notes |
-| --- | --- |
-| `APP_PUBLIC_URL` | public origin of the frontend; reset links are built from it. Empty = nothing is sent. Production rejects a localhost value |
-| `MAIL_BACKEND` | `console` or `smtp` |
-| `MAIL_FROM` | e.g. `ASEELO <no-reply@example.com>` — must be an address the provider lets you send as |
-| `SMTP_HOST` / `SMTP_PORT` | 587 with `SMTP_STARTTLS=true`, or 465 with `SMTP_SSL=true` |
-| `SMTP_USERNAME` / `SMTP_PASSWORD` | provider credentials |
-
-With `APP_ENV=production`, `MAIL_BACKEND=smtp` requires both `SMTP_HOST` and `APP_PUBLIC_URL` — the
-backend refuses to boot otherwise rather than accept reset requests it can never fulfil. There is
-no vendor SDK: any provider that speaks SMTP (SES, Resend, Postmark, Mailgun, Zoho) works by
-changing these variables alone.
-
 Generate the secret with:
 
 ```bash
