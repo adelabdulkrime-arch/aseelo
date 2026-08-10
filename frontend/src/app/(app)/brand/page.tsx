@@ -23,6 +23,10 @@ export default function BrandPage() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Warning shown when an uploaded logo has no alpha channel.
+  const [logoWarning, setLogoWarning] = useState(false);
+  const [cutoutApplied, setCutoutApplied] = useState(false);
+  const [removeWhiteBg, setRemoveWhiteBg] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   /** Mirror the server's stored brand into the form. */
@@ -84,9 +88,15 @@ export default function BrandPage() {
 
   async function handleLogo(file: File) {
     setError(null);
+    setLogoWarning(false);
+    setCutoutApplied(false);
     setUploading(true);
     try {
-      setBrand(await api.uploadLogo(file));
+      const result = await api.uploadLogo(file, removeWhiteBg);
+      setBrand(result);
+      setCutoutApplied(result.logo_cutout_applied === true);
+      // Only an explicit false is a warning; null means the server did not say.
+      setLogoWarning(result.logo_has_transparency === false);
       setSaved(true);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : t("somethingWrong"));
@@ -141,6 +151,30 @@ export default function BrandPage() {
             <p className="mt-1.5 text-xs text-ink-muted">{t("logoHint")}</p>
           </div>
         </div>
+
+        <label className="mt-4 flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0"
+            checked={removeWhiteBg}
+            onChange={(e) => setRemoveWhiteBg(e.target.checked)}
+          />
+          <span>
+            {t("removeWhiteBackground")}
+            <span className="block text-xs text-ink-muted">{t("removeWhiteBackgroundHint")}</span>
+          </span>
+        </label>
+
+        {logoWarning && (
+          <Alert kind="warning" className="mt-3">
+            {t("logoNoTransparency")}
+          </Alert>
+        )}
+        {cutoutApplied && (
+          <Alert kind="success" className="mt-3">
+            {t("logoCutoutApplied")}
+          </Alert>
+        )}
       </section>
 
       <form onSubmit={handleSubmit} className="space-y-5">

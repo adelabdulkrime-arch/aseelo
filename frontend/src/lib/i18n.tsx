@@ -87,6 +87,19 @@ const STRINGS = {
   uploadLogo: { ar: "رفع شعار", en: "Upload logo" },
   changeLogo: { ar: "تغيير الشعار", en: "Change logo" },
   logoHint: { ar: "PNG أو JPG أو WEBP، حتى ٥ ميجابايت", en: "PNG, JPG or WEBP, up to 5 MB" },
+  logoNoTransparency: {
+    ar: "شعارك بدون خلفية شفافة — قد يظهر بمربع أبيض. يُفضل استخدام صيغة PNG مفرغة.",
+    en: "Your logo has no transparent background — it may show as a white box. A cut-out PNG works best.",
+  },
+  removeWhiteBackground: { ar: "إزالة الخلفية البيضاء", en: "Remove the white background" },
+  removeWhiteBackgroundHint: {
+    ar: "قد يزيل الأبيض الموجود داخل التصميم أيضاً.",
+    en: "This may also clear white that belongs to the design.",
+  },
+  logoCutoutApplied: {
+    ar: "تمت إزالة الخلفية البيضاء من شعارك.",
+    en: "The white background was removed from your logo.",
+  },
   colors: { ar: "الألوان", en: "Colours" },
   primaryColor: { ar: "اللون الأساسي", en: "Primary" },
   secondaryColor: { ar: "اللون الثانوي", en: "Secondary" },

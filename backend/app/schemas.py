@@ -96,6 +96,10 @@ class BrandOut(ORMModel):
     id: uuid.UUID
     brand_name: str
     logo_url: str | None
+    # Set only on the upload response: False warns the caller that the logo has
+    # no alpha channel and will render as an opaque rectangle over the video.
+    logo_has_transparency: bool | None = None
+    logo_cutout_applied: bool | None = None
     primary_color: str
     secondary_color: str
     accent_color: str

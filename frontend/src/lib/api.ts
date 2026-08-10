@@ -148,10 +148,11 @@ export const api = {
 
   updateBrand: (input: BrandUpdate) => request<Brand>("/api/brand", { method: "PUT", body: input }),
 
-  uploadLogo: (file: File) => {
+  uploadLogo: (file: File, removeWhiteBackground = false) => {
     const formData = new FormData();
     formData.append("file", file);
-    return request<Brand>("/api/brand/logo", { method: "POST", formData });
+    const query = removeWhiteBackground ? "?remove_white_background=true" : "";
+    return request<Brand>(`/api/brand/logo${query}`, { method: "POST", formData });
   },
 
   listTemplates: () => request<Template[]>("/api/templates", { auth: false }),
