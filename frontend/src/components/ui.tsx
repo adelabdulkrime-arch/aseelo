@@ -90,15 +90,25 @@ export function EmptyState({
   );
 }
 
-export function Alert({ kind, children }: { kind: "error" | "success"; children: ReactNode }) {
-  const styles =
-    kind === "error"
-      ? "border-red-200 bg-red-50 text-red-700"
-      : "border-emerald-200 bg-emerald-50 text-emerald-700";
+const ALERT_STYLES = {
+  error: "border-red-200 bg-red-50 text-red-700",
+  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  warning: "border-amber-200 bg-amber-50 text-amber-800",
+} as const;
+
+export function Alert({
+  kind,
+  children,
+  className = "",
+}: {
+  kind: "error" | "success" | "warning";
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <div
-      className={`rounded-xl border px-3.5 py-2.5 text-sm ${styles}`}
-      role={kind === "error" ? "alert" : "status"}
+      className={`rounded-xl border px-3.5 py-2.5 text-sm ${ALERT_STYLES[kind]} ${className}`.trim()}
+      role={kind === "success" ? "status" : "alert"}
     >
       {children}
     </div>

@@ -37,6 +37,9 @@ export interface Brand {
   id: string;
   brand_name: string;
   logo_url: string | null;
+  /** Upload response only: false means the logo has no alpha and will render as a solid box. */
+  logo_has_transparency?: boolean | null;
+  logo_cutout_applied?: boolean | null;
   primary_color: string;
   secondary_color: string;
   accent_color: string;

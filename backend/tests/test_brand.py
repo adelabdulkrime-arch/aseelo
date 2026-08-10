@@ -13,6 +13,24 @@ def _png_bytes(size: tuple[int, int] = (256, 256)) -> bytes:
     return buffer.getvalue()
 
 
+def _transparent_png_bytes(size: tuple[int, int] = (256, 256)) -> bytes:
+    """A mark on a genuinely transparent background."""
+    buffer = io.BytesIO()
+    image = Image.new("RGBA", size, (0, 0, 0, 0))
+    image.paste((30, 136, 229, 255), (64, 64, 192, 192))
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _jpeg_bytes(size: tuple[int, int] = (256, 256)) -> bytes:
+    """A mark on white — JPEG cannot carry alpha at all."""
+    buffer = io.BytesIO()
+    image = Image.new("RGB", size, (255, 255, 255))
+    image.paste((30, 136, 229), (64, 64, 192, 192))
+    image.save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
 def test_get_brand_creates_default(client, user):
     response = client.get("/api/brand", headers=user["headers"])
     assert response.status_code == 200
@@ -92,6 +110,63 @@ def test_logo_upload_rejects_bad_extension(client, user):
         files={"file": ("evil.svg", _png_bytes(), "image/png")},
     )
     assert response.status_code == 422
+
+
+def test_logo_upload_flags_missing_transparency(client, user):
+    """A JPEG logo has no alpha, so the caller must be warned."""
+    response = client.post(
+        "/api/brand/logo",
+        headers=user["headers"],
+        files={"file": ("logo.jpg", _jpeg_bytes(), "image/jpeg")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["logo_has_transparency"] is False
+    assert body["logo_cutout_applied"] is False
+
+
+def test_logo_upload_reports_real_transparency(client, user):
+    response = client.post(
+        "/api/brand/logo",
+        headers=user["headers"],
+        files={"file": ("logo.png", _transparent_png_bytes(), "image/png")},
+    )
+    assert response.status_code == 200
+    assert response.json()["logo_has_transparency"] is True
+
+
+def test_fully_opaque_png_is_not_reported_as_transparent(client, user):
+    """RGBA alone is not enough — every pixel here is opaque."""
+    response = client.post(
+        "/api/brand/logo",
+        headers=user["headers"],
+        files={"file": ("logo.png", _png_bytes(), "image/png")},
+    )
+    assert response.status_code == 200
+    assert response.json()["logo_has_transparency"] is False
+
+
+def test_cutout_is_off_by_default(client, user):
+    response = client.post(
+        "/api/brand/logo",
+        headers=user["headers"],
+        files={"file": ("logo.jpg", _jpeg_bytes(), "image/jpeg")},
+    )
+    assert response.json()["logo_cutout_applied"] is False
+
+
+def test_cutout_removes_white_background_when_requested(client, user):
+    response = client.post(
+        "/api/brand/logo?remove_white_background=true",
+        headers=user["headers"],
+        files={"file": ("logo.jpg", _jpeg_bytes(), "image/jpeg")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["logo_cutout_applied"] is True
+    assert body["logo_has_transparency"] is True
+    # The cutout is always re-encoded as PNG, whatever arrived.
+    assert body["logo_url"].endswith(".png")
 
 
 def test_brands_are_isolated_per_user(client, user, other_user):

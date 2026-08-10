@@ -48,6 +48,9 @@ class ValidatedUpload:
     extension: str
     content_type: str
     media: MediaInfo | None = None
+    # Images only: False when the logo has no usable alpha channel, so it will
+    # render as an opaque rectangle over the video. None for non-images.
+    has_transparency: bool | None = None
 
     def cleanup(self) -> None:
         try:
@@ -61,6 +64,29 @@ def _extension_of(filename: str | None) -> str:
         return ""
     # Only the final suffix is considered; the original name is never used as a path.
     return Path(filename).suffix.lower()
+
+
+def _detect_transparency(path: Path) -> bool:
+    """True when the image carries an alpha channel that is actually used.
+
+    A mode check alone is not enough: a PNG saved from a JPEG source is RGBA
+    with every pixel fully opaque, which still renders as a solid rectangle.
+    """
+    from PIL import Image
+
+    try:
+        with Image.open(path) as img:
+            if "transparency" in img.info and img.mode in ("P", "L"):
+                return True
+            if img.mode not in ("RGBA", "LA", "PA"):
+                return False
+            alpha = img.convert("RGBA").getchannel("A")
+            low, _high = alpha.getextrema()
+            # Anything below fully opaque means real transparency is present.
+            return low < 255
+    except Exception as exc:  # noqa: BLE001 - detection must never fail the upload
+        logger.warning("transparency_detection_failed", extra={"error": str(exc)})
+        return False
 
 
 def _matches(header: bytes, signatures: tuple[tuple[int, bytes], ...]) -> bool:
@@ -210,9 +236,14 @@ def validate_image_upload(upload: UploadFile, *, max_pixels: int = 8000) -> Vali
             raise ValidationError("The image has invalid dimensions")
         if width > max_pixels or height > max_pixels:
             raise ValidationError(f"The image is too large ({width}x{height}); max {max_pixels}px per side")
+
+        result.has_transparency = _detect_transparency(path)
     except Exception:
         result.cleanup()
         raise
 
-    logger.info("image_upload_validated", extra={"size_bytes": size})
+    logger.info(
+        "image_upload_validated",
+        extra={"size_bytes": size, "has_transparency": result.has_transparency},
+    )
     return result

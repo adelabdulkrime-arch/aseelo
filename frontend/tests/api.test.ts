@@ -181,6 +181,27 @@ describe("requests", () => {
     expect(init.body).toBeInstanceOf(FormData);
   });
 
+  it("does not ask for background removal unless requested", async () => {
+    setToken("tok");
+    const fetchMock = mockFetch(jsonResponse(200, {}));
+
+    await api.uploadLogo(new File(["x"], "logo.jpg", { type: "image/jpeg" }));
+
+    // Off by default: the cutout also clears white belonging to the design.
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).not.toContain("remove_white_background");
+  });
+
+  it("opts into background removal when asked", async () => {
+    setToken("tok");
+    const fetchMock = mockFetch(jsonResponse(200, {}));
+
+    await api.uploadLogo(new File(["x"], "logo.jpg", { type: "image/jpeg" }), true);
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("remove_white_background=true");
+  });
+
   it("returns undefined for 204 rather than trying to parse a body", async () => {
     setToken("tok");
     mockFetch({ status: 204 } as unknown as Response);
