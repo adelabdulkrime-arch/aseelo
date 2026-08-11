@@ -18,7 +18,7 @@ function Probe() {
     <div>
       <span data-testid="locale">{locale}</span>
       <span data-testid="dir">{dir}</span>
-      <span data-testid="login-label">{t("startOver")}</span>
+      <span data-testid="login-label">{t("login")}</span>
       <button onClick={() => setLocale("en")}>to-en</button>
       <button onClick={() => setLocale("ar")}>to-ar</button>
     </div>
@@ -61,8 +61,8 @@ describe("I18nProvider", () => {
     await user.click(screen.getByRole("button", { name: "to-en" }));
     const english = screen.getByTestId("login-label").textContent;
 
-    expect(arabic).toBe("بدء جلسة جديدة");
-    expect(english).toBe("Start a new session");
+    expect(arabic).toBe("تسجيل الدخول");
+    expect(english).toBe("Log in");
   });
 
   it("persists the choice and restores it on the next mount", async () => {

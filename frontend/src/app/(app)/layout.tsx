@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, type ReactNode } from "react";
 
 import { LanguageToggle } from "@/components/language-toggle";
 import { InstallBanner } from "@/components/pwa-banners";
@@ -22,10 +22,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, loading, error, signOut, retry } = useAuth();
   const { t } = useI18n();
   const pathname = usePathname();
+  const router = useRouter();
 
-  // No login page to fall back to, so a session that never got established
-  // (guests disabled, or rate limited) gets a real message here instead of
-  // bouncing between routes on an endless spinner.
+  useEffect(() => {
+    // No session at all. When we know *why* (rate limited, guests disabled) the
+    // block below explains it instead; a bare failure falls back to /login.
+    if (!loading && !user && !error) router.replace("/login");
+  }, [loading, user, error, router]);
+
+  // A known session failure gets a real message and a retry rather than a
+  // silent bounce to /login, which used to spin forever when guests were the
+  // only way in.
   if (!loading && !user && error) {
     return <SessionErrorState error={error} onRetry={retry} />;
   }
@@ -73,7 +80,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               onClick={signOut}
               className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-ink-soft transition hover:bg-slate-50"
             >
-              {t("startOver")}
+              {t("logout")}
             </button>
           </div>
         </div>

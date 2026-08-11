@@ -2,8 +2,9 @@
 
 Base URL: `http://localhost:8000`. Interactive docs (OpenAPI) at `/docs`.
 
-All endpoints below except `/health`, `/api/auth/guest` and `/api/templates` require
-`Authorization: Bearer <access_token>`.
+All endpoints below except `/health`, `/api/auth/register`, `/api/auth/login`,
+`/api/auth/setup-account`, `/api/auth/forgot-password`, `/api/auth/reset-password` and
+`/api/templates` require `Authorization: Bearer <access_token>`.
 
 ## Errors
 
@@ -24,41 +25,103 @@ Validation errors add `error.details` as a list of `{field, message}`.
 | `unauthorized` | 401 | Missing, malformed or expired token; bad credentials |
 | `forbidden` | 403 | Account disabled, or admin-only route |
 | `not_found` | 404 | Missing — **or owned by another user** |
-| `conflict` | 409 | Render already running; download before completion |
+| `conflict` | 409 | Email taken; render already running; download before completion |
 | `payload_too_large` | 413 | Upload exceeded `MAX_UPLOAD_SIZE` / `MAX_LOGO_SIZE` |
 | `rate_limited` | 429 | Auth or upload rate limit tripped |
 | `internal_error` | 500 | Unhandled; the message is generic in production |
 
 ## Auth
 
-There is no login. `/api/auth/guest` is the only way to get a session.
+### `POST /api/auth/register` → 201
 
-### `POST /api/auth/guest` → 201
-
-No body. Mints a throwaway account and a default brand profile, and returns a `TokenResponse`:
+Body: `name`, `email`, `password` (≥8 chars), `confirm_password`.
+Creates the user *and* a default brand profile. Returns a `TokenResponse`.
 
 ```json
 {
   "access_token": "eyJ…",
   "token_type": "bearer",
   "expires_in": 86400,
-  "user": { "id": "…", "name": "Guest", "email": "guest-…@guest.aseelo.example", "role": "USER", "is_active": true, "is_guest": true, "created_at": "…" }
+  "user": { "id": "…", "name": "…", "email": "…", "role": "USER", "is_active": true, "created_at": "…" }
 }
 ```
 
-Returns 403 `forbidden` when `GUEST_SESSIONS_ENABLED` is off (an emergency brake for a host that
-cannot keep up with render load, not a normal state). Rate limited by `GUEST_RATE_LIMIT` (default
-`30/hour`) — this caps session creation, not rendering: a session on its own queues nothing. It
-exists so one IP cannot fill `users` with spam rows, not to protect the render queue, which
-`UPLOAD_RATE_LIMIT` on `POST /api/videos` covers separately. A normal visitor calls this once per
-browser; `AuthProvider` only calls it again when the stored token is gone.
+Returns 403 `forbidden` when `GUEST_SESSIONS_ENABLED` is off — the visitor is expected to sign in
+instead. Rate limited by `GUEST_RATE_LIMIT` (default `30/hour`) — this caps session creation, not
+rendering: a session on its own queues nothing. It exists so one IP cannot fill `users` with spam
+rows, not to protect the render queue, which `UPLOAD_RATE_LIMIT` on `POST /api/videos` covers
+separately. A normal visitor calls this once per browser; `AuthProvider` only calls it again when
+the stored token is gone.
 
-Guest accounts older than `GUEST_RETENTION_DAYS` (default 7) are reclaimed by
-`scripts.prune_guests`, which deletes the account, its videos, and their stored files.
+### `POST /api/auth/login` → 200
+
+Body: `email`, `password`. Same `TokenResponse`. Returns 401 for both an unknown email and a
+wrong password — the responses are indistinguishable on purpose.
+
+### `POST /api/auth/setup-account` → 201
+
+Body: `charge_id`, `email`, `password` (≥8 chars). Redeems a paid charge into an account:
+creates the user and a default brand profile, marks the charge used, and returns the same
+`TokenResponse` as login — so the customer lands on the dashboard already signed in.
+
+No `confirm_password`: the setup page shows one password field, and a mistyped password is
+recoverable through the ordinary reset flow.
+
+`payment_charges` rows are written outside the app (payment happens elsewhere; a provider
+webhook is not part of the MVP). To record one:
+
+```bash
+docker compose run --rm backend python -m scripts.create_charge ch_3PabcXYZ customer@example.com
+```
+
+It prints the activation URL: `APP_PUBLIC_URL/setup-account?email=…&charge=…`.
+
+| Situation | Response |
+| --- | --- |
+| Unknown `charge_id` | 422 `validation_error` |
+| Charge already redeemed | 422 `validation_error` (identical message) |
+| `email` does not match the charge | 422 `validation_error` (identical message) |
+| An account already exists for that email | 409 `conflict`, charge left **unused** |
+
+The first three are deliberately indistinguishable: the pair `(email, charge_id)` is what
+authorises account creation, so naming which half was wrong would confirm which charge
+references exist. The 409 exists because paying with someone else's address must not let the
+payer set that account's password.
+
+Email is matched case-insensitively, and the account is created from the address stored on the
+charge, lowercased — the customer never types this address, so an account whose stored casing
+differs from what they type at login is an account they can never reach.
+
+Rate limited (`SETUP_ACCOUNT_RATE_LIMIT`, default 10/hour) — tighter than `AUTH_RATE_LIMIT`
+because a guessed pair yields an account.
 
 ### `GET /api/auth/me` → 200
 
 Returns the authenticated `UserOut`.
+
+### `POST /api/auth/forgot-password` → 200
+
+Body: `email`. Always returns the same `{"message": ...}`, whether or not an account exists —
+otherwise the endpoint would be a way to enumerate registered addresses. For the same reason the
+mail is sent *after* the response (so delivery time cannot be measured) and a transport failure is
+logged rather than returned.
+
+Issuing a link retires any earlier one for that user. Rate limited by `PASSWORD_RESET_RATE_LIMIT`
+(default `5/hour`), tighter than the other auth endpoints because this one sends mail to an
+address the caller chooses.
+
+Nothing is sent when `APP_PUBLIC_URL` is empty — there would be no valid link to include.
+
+### `POST /api/auth/reset-password` → 200
+
+Body: `token`, `password`, `confirm_password`. Returns 422 with `validation_error` for a token that
+is unknown, already used, expired, or belongs to a disabled account — all four are the same
+message, so a caller learns nothing about which.
+
+Tokens are single-use, expire after `PASSWORD_RESET_TOKEN_TTL_MINUTES` (default 60), and are stored
+only as a SHA-256 digest, so a database leak cannot be replayed.
+
+> Access tokens are stateless JWTs: sessions issued before a reset remain valid until they expire.
 
 ## Brand
 

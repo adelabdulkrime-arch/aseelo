@@ -96,6 +96,75 @@ class User(TimestampMixin, Base):
     videos: Mapped[list["Video"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class PasswordResetToken(Base):
+    """A single-use, expiring password reset grant.
+
+    Only the SHA-256 of the token is stored. The plaintext exists solely inside
+    the email that was sent, so a database leak cannot be replayed into account
+    takeovers - which is the entire point of a reset token being a bearer
+    credential.
+    """
+
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped["User"] = relationship(back_populates="password_reset_tokens")
+
+
+class PaymentCharge(TimestampMixin, Base):
+    """A completed payment that entitles exactly one account to be created.
+
+    Checkout never hands the customer a password. It hands them a link to
+    /setup-account carrying their email and this charge reference, and they
+    choose the password themselves. ``used_at`` is what makes that link
+    single-use: it lives in an inbox forever, so without it the same URL would
+    keep minting accounts.
+
+    This is a redemption ledger, not a billing system - it records that a
+    payment happened somewhere else and whether it has been spent.
+    """
+
+    __tablename__ = "payment_charges"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    # The payment provider's own reference. Unique, so the same payment
+    # imported or delivered twice cannot become two redeemable rows.
+    charge_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    # The address the customer paid with. Redemption requires the caller to
+    # present this exact address, so a leaked charge reference on its own is
+    # not enough to create an account.
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Which account the charge produced - the answer to "who is this payment
+    # for" when support has only a receipt. SET NULL rather than CASCADE: the
+    # payment record has to outlive the account it created.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+
+    @property
+    def is_used(self) -> bool:
+        """Stored as a timestamp rather than a bool: same answer, plus *when*.
+
+        Knowing the moment a link was redeemed is what lets a duplicate-charge
+        or refund dispute be settled later, and it costs nothing over a flag.
+        """
+        return self.used_at is not None
 
 
 # ---------------------------------------------------------------------------

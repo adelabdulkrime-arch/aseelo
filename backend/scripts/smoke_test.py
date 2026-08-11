@@ -1,7 +1,7 @@
 """End-to-end smoke test against a running ASEELO stack.
 
-Exercises the full Definition of Done: guest session -> brand + logo -> upload
-a real clip with Arabic text -> job queued -> Celery worker renders with
+Exercises the full Definition of Done: register -> login -> brand + logo ->
+upload a real clip with Arabic text -> job queued -> Celery worker renders with
 FFmpeg -> quality check -> COMPLETED -> download and verify the MP4.
 
     docker compose run --rm backend python -m scripts.smoke_test
@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 
 import httpx
@@ -62,11 +63,27 @@ def main() -> None:
         fail(f"/health returned {health.status_code}")
     print(f"  {health.json()}")
 
-    step("Start a guest session")
-    response = client.post("/api/auth/guest")
+    step("Register")
+    email = f"smoke-{uuid.uuid4().hex[:10]}@example.com"
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "name": "Smoke Test",
+            "email": email,
+            "password": "SuperSecret123",
+            "confirm_password": "SuperSecret123",
+        },
+    )
     if response.status_code != 201:
-        fail(f"guest returned {response.status_code}: {response.text}")
+        fail(f"register returned {response.status_code}: {response.text}")
     print(f"  user {response.json()['user']['id']}")
+
+    step("Login")
+    response = client.post(
+        "/api/auth/login", json={"email": email, "password": "SuperSecret123"}
+    )
+    if response.status_code != 200:
+        fail(f"login returned {response.status_code}: {response.text}")
     headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
 
     step("Configure brand")

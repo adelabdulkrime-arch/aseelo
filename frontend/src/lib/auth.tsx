@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    /** Open the app without a login - the only way in.
+    /** Open the app without a login, when the backend allows it.
      *
      * The session has to come from the server: every API call carries the JWT
      * and the backend reads the user id out of it. A user object invented here
@@ -65,7 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      *
      * A failure is not fatal, but the caller needs to know *why* there is no
      * session (rate limited vs. disabled vs. something else) so the route
-     * guards can show a real message instead of spinning forever.
+     * guards can show a real message instead of spinning forever. With login
+     * restored there is also a real fallback: the visitor can sign in.
      */
     async function start() {
       setError(null);
@@ -111,11 +112,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(() => {
     setToken(null);
     setUser(null);
-    // No login page to send the caller to: land on "/" and mint a fresh guest
-    // session immediately, since there is no token left to replay.
-    router.replace("/");
-    retry();
-  }, [router, retry]);
+    // Login exists again, so a signed-out caller belongs on the login screen
+    // rather than being handed a fresh anonymous session.
+    router.replace("/login");
+  }, [router]);
 
   const refresh = useCallback(async () => {
     setUser(await api.me());
