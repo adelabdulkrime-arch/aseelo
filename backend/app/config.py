@@ -66,20 +66,28 @@ class Settings(BaseSettings):
 
     # ---------- Rate limiting ----------
     rate_limit_enabled: bool = True
+    auth_rate_limit: str = "10/minute"
     upload_rate_limit: str = "30/hour"
+    # Deliberately tighter than auth_rate_limit: this endpoint sends mail to an
+    # address the caller chose, so it is the one worth abusing as a spam relay.
+    password_reset_rate_limit: str = "5/hour"  # noqa: S105 - a rate limit, not a secret
+    # Tighter than auth_rate_limit for the same reason: a caller who guesses a
+    # (email, charge_id) pair gets an account, so guessing must be expensive.
+    setup_account_rate_limit: str = "10/hour"
 
     # ---------- Guest sessions ----------
-    # The only way into the app - there is no login. ON by default; turning it
-    # off leaves nothing for a visitor to reach. Exists as an emergency brake
-    # for a one-core host: a render saturates the whole machine, so this is the
-    # knob to shut off new sessions without taking the app down entirely.
+    # Opens the app without a login. Now that login exists again, this is a
+    # convenience path rather than the only way in, so it stays ON: a visitor
+    # can try the product before creating an account. Turning it off leaves the
+    # login screen as the entry point, which is a valid emergency brake for a
+    # one-core host where a render saturates the whole machine.
     guest_sessions_enabled: bool = True
     # This gates session creation, not rendering - a guest session on its own
     # queues nothing. Render load is capped separately by upload_rate_limit on
     # POST /api/videos, so this only needs to be tight enough to stop the
-    # `users` table from being spammed with empty rows, not tight enough to
-    # protect the render queue. A visitor normally calls this once per browser
-    # (AuthProvider only re-requests it when the stored token is gone).
+    # `users` table from being spammed with empty rows. Kept at 30/hour (not the
+    # old 2/hour) because a handful of reloads used to lock a browser out for an
+    # hour; see the fix in 8d0a873.
     guest_rate_limit: str = "30/hour"
     # Guests only. Registered users keep max_video_duration_seconds.
     guest_max_video_duration_seconds: int = 20
@@ -88,6 +96,27 @@ class Settings(BaseSettings):
     # unreachable well before it is removed.
     guest_retention_days: int = 7
 
+    # ---------- Mail / password reset ----------
+    # Origin of the FRONTEND as a user's browser sees it, used to build the
+    # reset link. Under the single-domain proxy topology this is the one public
+    # domain. Empty disables sending entirely.
+    app_public_url: str = ""
+    # `console` logs the message instead of sending it - the default so that
+    # development and tests never need mail credentials. `smtp` speaks to any
+    # provider (SES, Resend, Postmark, Mailgun, Zoho...), which is why there is
+    # no vendor SDK here.
+    mail_backend: Literal["console", "smtp"] = "console"
+    mail_from: str = "ASEELO <no-reply@localhost>"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    # STARTTLS on an ordinary port (587). Set smtp_ssl for implicit TLS (465).
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
+    smtp_timeout_seconds: int = 15
+    password_reset_token_ttl_minutes: int = 60
+
     # ---------- Misc ----------
     allowed_video_mime_types: str = (
         "video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm,video/mpeg"
@@ -95,6 +124,9 @@ class Settings(BaseSettings):
     allowed_video_extensions: str = ".mp4,.mov,.avi,.mkv,.webm,.mpeg,.mpg,.m4v"
     allowed_image_mime_types: str = "image/png,image/jpeg,image/webp"
     allowed_image_extensions: str = ".png,.jpg,.jpeg,.webp"
+
+    seed_admin_email: str | None = None
+    seed_admin_password: str | None = None
 
     @field_validator("log_level")
     @classmethod
@@ -125,6 +157,14 @@ class Settings(BaseSettings):
             )
         if self.storage_provider == "s3" and not (self.s3_access_key and self.s3_secret_key):
             problems.append("STORAGE_PROVIDER=s3 but S3 credentials are missing")
+        if self.mail_backend == "smtp" and not self.smtp_host:
+            problems.append("MAIL_BACKEND=smtp but SMTP_HOST is empty")
+        if self.mail_backend == "smtp" and not self.app_public_url:
+            problems.append(
+                "MAIL_BACKEND=smtp but APP_PUBLIC_URL is empty; reset links could not be built"
+            )
+        if "localhost" in self.app_public_url or "127.0.0.1" in self.app_public_url:
+            problems.append("APP_PUBLIC_URL still points at localhost; reset links would be dead")
 
         if problems:
             raise ValueError(

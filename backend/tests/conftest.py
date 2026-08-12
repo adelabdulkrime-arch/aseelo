@@ -8,6 +8,7 @@ Each test module gets a clean set of tables.
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import Iterator
 
 import pytest
@@ -34,7 +35,12 @@ def _schema() -> Iterator[None]:
 def _clean_tables() -> Iterator[None]:
     """Truncate user data between tests; seeded templates are re-created."""
     with SessionLocal() as db:
-        db.execute(text("TRUNCATE users, videos, rendering_jobs, brand_profiles CASCADE"))
+        db.execute(
+            text(
+                "TRUNCATE users, videos, rendering_jobs, brand_profiles, "
+                "password_reset_tokens, payment_charges CASCADE"
+            )
+        )
         db.commit()
     yield
 
@@ -66,27 +72,34 @@ def template(db) -> Template:
     return existing
 
 
-def guest(client: TestClient) -> dict:
-    """Mint a guest session and return {'token', 'user', 'headers'}.
-
-    The only account there is: every caller in this app is a guest, so this is
-    what every test that needs "a signed-in user" reaches for.
-    """
-    response = client.post("/api/auth/guest")
+def register(client: TestClient, email: str | None = None, password: str = "SuperSecret123") -> dict:
+    """Register a fresh user and return {'token', 'user', 'headers'}."""
+    email = email or f"user-{uuid.uuid4().hex[:10]}@example.com"
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "name": "Test User",
+            "email": email,
+            "password": password,
+            "confirm_password": password,
+        },
+    )
     assert response.status_code == 201, response.text
     body = response.json()
     return {
         "token": body["access_token"],
         "user": body["user"],
+        "email": email,
+        "password": password,
         "headers": {"Authorization": f"Bearer {body['access_token']}"},
     }
 
 
 @pytest.fixture
 def user(client: TestClient) -> dict:
-    return guest(client)
+    return register(client)
 
 
 @pytest.fixture
 def other_user(client: TestClient) -> dict:
-    return guest(client)
+    return register(client)

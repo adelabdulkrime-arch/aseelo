@@ -70,16 +70,16 @@ describe("apiOrigin", () => {
 describe("error handling", () => {
   it("turns the backend envelope into an ApiError", async () => {
     mockFetch(
-      jsonResponse(403, {
-        error: { code: "forbidden", message: "Guest sessions are disabled" },
+      jsonResponse(409, {
+        error: { code: "conflict", message: "An account already exists for this email" },
       }),
     );
 
-    const err = await api.guest().catch((e) => e);
+    const err = await api.login({ email: "a@b.co", password: "x" }).catch((e) => e);
     expect(err).toBeInstanceOf(ApiError);
-    expect(err.status).toBe(403);
-    expect(err.code).toBe("forbidden");
-    expect(err.message).toBe("Guest sessions are disabled");
+    expect(err.status).toBe(409);
+    expect(err.code).toBe("conflict");
+    expect(err.message).toBe("An account already exists for this email");
   });
 
   it("exposes per-field messages by name and by dotted suffix", async () => {
@@ -88,15 +88,14 @@ describe("error handling", () => {
         error: {
           code: "validation_error",
           message: "Invalid request payload",
-          details: [{ field: "body.template_id", message: "required" }],
+          details: [{ field: "body.password", message: "too short" }],
         },
       }),
     );
 
-    setToken("tok");
-    const err: ApiError = await api.renderVideo("v1").catch((e) => e);
-    expect(err.fieldError("template_id")).toBe("required");
-    expect(err.fieldError("body.template_id")).toBe("required");
+    const err: ApiError = await api.login({ email: "a@b.co", password: "x" }).catch((e) => e);
+    expect(err.fieldError("password")).toBe("too short");
+    expect(err.fieldError("body.password")).toBe("too short");
     expect(err.fieldError("email")).toBeUndefined();
   });
 
@@ -157,16 +156,19 @@ describe("requests", () => {
   });
 
   it("sends JSON bodies with the right content type", async () => {
-    setToken("tok");
-    const fetchMock = mockFetch(jsonResponse(200, {}));
+    const fetchMock = mockFetch(jsonResponse(201, { access_token: "t" }));
 
-    await api.updateBrand({ brand_name: "My Brand" });
+    await api.setupAccount({ email: "a@b.co", charge_id: "ch_1", password: "secret12" });
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toContain("/api/brand");
-    expect(init.method).toBe("PUT");
+    expect(url).toContain("/api/auth/setup-account");
+    expect(init.method).toBe("POST");
     expect(init.headers["Content-Type"]).toBe("application/json");
-    expect(JSON.parse(init.body)).toEqual({ brand_name: "My Brand" });
+    expect(JSON.parse(init.body)).toEqual({
+      email: "a@b.co",
+      charge_id: "ch_1",
+      password: "secret12",
+    });
   });
 
   it("does not set a JSON content type on multipart uploads", async () => {

@@ -13,15 +13,15 @@ No FFmpeg knowledge required.
 | --- | --- |
 | Backend API (FastAPI) | implemented |
 | Database + migrations (PostgreSQL/Alembic) | implemented |
-| Auth (guest sessions only - no login) | implemented |
+| Auth (JWT, bcrypt) | implemented |
 | Rendering engine (FFmpeg + Pillow) | implemented |
 | Queue (Redis + Celery) | implemented |
 | Frontend PWA (Next.js + TypeScript + Tailwind) | implemented |
-| Backend tests + end-to-end smoke test | passing |
+| Backend tests (95) + end-to-end smoke test | passing |
 
-There is no login, register, or password reset. Every visitor gets an isolated guest account the
-moment the app opens (`/dashboard`, `/brand`, `/videos`, `/videos/new`, `/videos/[id]`,
-`/settings`), Arabic-first with a live RTL/LTR toggle, and installable as a PWA.
+All eight screens from the spec are built (`/login`, `/register`, `/dashboard`, `/brand`,
+`/videos`, `/videos/new`, `/videos/[id]`, `/settings`), Arabic-first with a live RTL/LTR toggle,
+and installable as a PWA.
 
 ## Quick start
 
@@ -49,7 +49,7 @@ Migrations and template seeding run automatically on boot (see `backend/entrypoi
 ## Try it end to end
 
 ```bash
-curl -s -X POST http://localhost:8000/api/auth/guest
+curl -s -X POST http://localhost:8000/api/auth/register -H 'Content-Type: application/json' -d '{"name":"Test","email":"you@example.com","password":"SuperSecret123","confirm_password":"SuperSecret123"}'
 ```
 
 Save the returned `access_token`, then create a video (multipart):
@@ -69,15 +69,15 @@ Tests need PostgreSQL and the real ffmpeg/ffprobe binaries, so run them inside t
 docker compose run --rm -e RATE_LIMIT_ENABLED=false backend pytest -q
 ```
 
-They encode actual clips and assert the output is a valid 1080×1920 H.264/AAC MP4 — nothing in the
-rendering path is mocked. (`RATE_LIMIT_ENABLED=false` stops the guest-session limiter from
-rejecting the many sessions the suite creates.)
+95 tests, all passing. They encode actual clips and assert the output is a valid 1080×1920
+H.264/AAC MP4 — nothing in the rendering path is mocked. (`RATE_LIMIT_ENABLED=false` stops the
+auth limiter from rejecting the many logins the suite performs.)
 
 > **The suite truncates `users`, `videos`, `rendering_jobs` and `brand_profiles`** between tests.
 > Run it against a development database only — it will wipe accounts you created by hand.
 
 The end-to-end smoke test drives the *running* stack through the whole Definition of Done —
-guest session, brand, upload, queue, worker, FFmpeg, quality check, download, ffprobe:
+register, brand, upload, queue, worker, FFmpeg, quality check, download, ffprobe:
 
 ```bash
 docker compose run --rm backend python -m scripts.smoke_test
@@ -172,29 +172,69 @@ which busts caches and lets the next boot detect whether anything actually chang
 templates whose configuration moved are re-rendered. A render failure is logged and swallowed: the
 picker falls back to its gradient rather than blocking startup.
 
+## Password reset
+
+`POST /api/auth/forgot-password` issues a single-use token, stored only as a SHA-256 digest, and
+mails a link to `APP_PUBLIC_URL/reset-password?token=…`. `MAIL_BACKEND=console` (the default) logs
+the message instead of sending it, so development and tests need no credentials; `smtp` speaks to
+any provider, which is why there is no vendor SDK in the dependency list.
+
+The endpoint answers identically for unknown addresses, sends after responding, and swallows
+transport errors — each of those exists so that the response cannot be used to discover which
+addresses are registered. See [docs/api.md](docs/api.md#post-apiauthforgot-password).
+
+## Post-payment activation
+
+Payment happens outside the app. What the app owns is the redemption: a `payment_charges` row
+records that a charge was paid and by which address, and `POST /api/auth/setup-account` spends it
+exactly once — creating the user and a default brand profile, then returning a token so the
+customer lands on the dashboard already signed in rather than at a login screen.
+
+```bash
+docker compose run --rm backend python -m scripts.create_charge ch_3PabcXYZ customer@example.com
+```
+
+That prints the link to send: `/setup-account?email=…&charge=…`. Nothing else writes to that
+table — a provider webhook is deliberately not part of the MVP, and without this command the flow
+would have no way to be exercised at all.
+
+Unknown, spent and mismatched charges all answer identically, because the pair
+`(email, charge_id)` is what authorises account creation and naming the wrong half would confirm
+which charge references exist. An address that already has an account gets a 409 instead and the
+charge is left unspent: paying with someone else's email must not set that account's password.
+See [docs/api.md](docs/api.md#post-apiauthsetup-account).
+
 ## Guest sessions
 
-There is no login, register, or password reset. `AuthProvider` calls `POST /api/auth/guest` the
-moment the app opens, which creates an isolated throwaway account with its own brand profile and
-returns a real JWT. **On by default** — `GUEST_SESSIONS_ENABLED=false` is an emergency brake for a
-host that cannot keep up with render load, not a normal setting; with it off there is nothing for a
-visitor to reach.
+`GUEST_SESSIONS_ENABLED=true` lets the app open without a login: `AuthProvider`
+calls `POST /api/auth/guest`, which creates an isolated throwaway account with its
+own brand profile and returns a real JWT. **Off by default in every production
+file** — turn it on per environment.
 
-The session has to come from the server. A user object invented in the client would render a
-dashboard whose every request 401s: signed in to look at, loading nothing.
+The session has to come from the server. A user object invented in the client
+would render a dashboard whose every request 401s: signed in to look at, loading
+nothing. Guests are flagged `is_guest`, so Settings offers "create a permanent
+account" instead of showing the synthetic `@guest.aseelo.example` address.
 
 Video duration is capped tighter for guests, because duration drives render cost:
 `GUEST_MAX_VIDEO_DURATION_SECONDS` (20 s), clamped by `min()` against
 `MAX_VIDEO_DURATION_SECONDS` so misconfiguring it can never *raise* the limit for anybody.
+
+| | Guest | Registered |
+| --- | --- | --- |
+| Max video duration | `GUEST_MAX_VIDEO_DURATION_SECONDS` (20 s) | `MAX_VIDEO_DURATION_SECONDS` |
+| Sessions per hour | `GUEST_RATE_LIMIT` (30) | n/a |
+
+The guest ceiling is clamped by `min()` against the global one, so misconfiguring
+it can never *raise* the limit for anybody.
 
 `GUEST_RATE_LIMIT` (default `30/hour`) is a different kind of guard: it caps how many sessions one
 IP can *create*, not how many renders it can queue - a guest session on its own does nothing to the
 render queue. It exists to stop `users` filling up with spam rows, not to protect CPU. Actual render
 load is capped separately by `UPLOAD_RATE_LIMIT` on `POST /api/videos`.
 
-Guest rows accumulate for as long as the endpoint is enabled — which, with no other account type,
-is the entire lifetime of the deployment. Reclaim them — accounts, videos, jobs, brand profiles
-**and the media on disk**:
+Guest rows accumulate for as long as the endpoint is enabled. Reclaim them —
+accounts, videos, jobs, brand profiles **and the media on disk**:
 
 ```bash
 docker compose run --rm backend python -m scripts.prune_guests --dry-run

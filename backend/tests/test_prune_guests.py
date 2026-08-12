@@ -12,6 +12,8 @@ from app.models import BrandProfile, User, Video, VideoStatus
 from app.storage import get_storage
 from scripts.prune_guests import prune
 
+from .conftest import register
+
 
 def _make_guest(db, *, days_old: int, with_video: bool = False) -> User:
     user = User(
@@ -62,16 +64,17 @@ def test_keeps_guests_inside_the_window(client, db):
     assert db.scalar(select(User).where(User.id == fresh.id)) is not None
 
 
-def test_never_touches_a_guest_still_inside_the_window_regardless_of_others(client, db):
-    """The filter is on age, not a blanket sweep - a fresh guest survives a
-    prune run that is actively removing other, older ones."""
-    fresh = _make_guest(db, days_old=0)
-    _make_guest(db, days_old=30)
+def test_never_touches_real_accounts_however_old(client, db):
+    """The guard that matters: a paying customer is not a guest."""
+    account = register(client)
+    user = db.scalar(select(User).where(User.email == account["email"]))
+    user.created_at = datetime.now(UTC) - timedelta(days=3650)
+    db.commit()
 
     stats = prune(older_than_days=7)
 
-    assert stats["users"] == 1
-    assert db.scalar(select(User).where(User.id == fresh.id)) is not None
+    assert stats["users"] == 0
+    assert db.scalar(select(User).where(User.email == account["email"])) is not None
 
 
 def test_cascades_to_videos_and_brand_profile(client, db):

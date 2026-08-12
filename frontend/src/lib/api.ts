@@ -135,14 +135,55 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 // Endpoints
 // ---------------------------------------------------------------------------
 export const api = {
+  register: (input: {
+    name: string;
+    email: string;
+    password: string;
+    confirm_password: string;
+  }) => request<TokenResponse>("/api/auth/register", { method: "POST", body: input, auth: false }),
+
+  login: (input: { email: string; password: string }) =>
+    request<TokenResponse>("/api/auth/login", { method: "POST", body: input, auth: false }),
+
+  /** Redeem a paid charge into an account. Returns a token, like login does. */
+  setupAccount: (input: { email: string; charge_id: string; password: string }) =>
+    request<TokenResponse>("/api/auth/setup-account", {
+      method: "POST",
+      body: input,
+      auth: false,
+    }),
+
+  /** Turn the caller's own guest session into a real account, in place.
+   *
+   * Same user_id, so every video and the brand profile stay attached -
+   * unlike register(), which would start a blank one.
+   */
+  convertGuest: (input: { email: string; password: string }) =>
+    request<TokenResponse>("/api/auth/convert-guest", { method: "POST", body: input }),
+
   /** Mint a throwaway session so the app opens without a login.
    *
-   * 429 when the rate limit is hit is an ordinary outcome the caller is
-   * expected to handle, not a bug. There is no other way into the app.
+   * 403 when the deployment has guest sessions disabled, 429 when the rate
+   * limit is hit - both are ordinary outcomes the caller is expected to handle,
+   * not bugs.
    */
   guest: () => request<TokenResponse>("/api/auth/guest", { method: "POST", auth: false }),
 
   me: () => request<User>("/api/auth/me"),
+
+  forgotPassword: (input: { email: string }) =>
+    request<{ message: string }>("/api/auth/forgot-password", {
+      method: "POST",
+      body: input,
+      auth: false,
+    }),
+
+  resetPassword: (input: { token: string; password: string; confirm_password: string }) =>
+    request<{ message: string }>("/api/auth/reset-password", {
+      method: "POST",
+      body: input,
+      auth: false,
+    }),
 
   getBrand: () => request<Brand>("/api/brand"),
 
