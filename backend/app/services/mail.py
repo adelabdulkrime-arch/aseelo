@@ -75,19 +75,19 @@ def send_mail(*, to: str, subject: str, text_body: str, html_body: str | None = 
 # ---------------------------------------------------------------------------
 # Password reset
 # ---------------------------------------------------------------------------
-_RESET_SUBJECT = "إعادة تعيين كلمة المرور | Reset your ASEELO password"
+_RESET_SUBJECT = "إعادة تعيين كلمة المرور | Reset your V.onemedia password"
 
 
 def _reset_bodies(name: str, link: str, ttl_minutes: int) -> tuple[str, str]:
     text = (
         f"مرحباً {name}،\n\n"
-        "وصلنا طلب لإعادة تعيين كلمة مرور حسابك في أصيلو.\n"
+        "وصلنا طلب لإعادة تعيين كلمة مرور حسابك في V.onemedia.\n"
         f"افتح الرابط التالي خلال {ttl_minutes} دقيقة:\n\n"
         f"{link}\n\n"
         "إن لم تطلب ذلك، تجاهل هذه الرسالة — كلمة مرورك لن تتغير.\n\n"
         "---\n\n"
         f"Hi {name},\n\n"
-        "We received a request to reset your ASEELO password.\n"
+        "We received a request to reset your V.onemedia password.\n"
         f"Open the link below within {ttl_minutes} minutes:\n\n"
         f"{link}\n\n"
         "If you did not request this, ignore this email — your password stays unchanged.\n"
@@ -95,13 +95,13 @@ def _reset_bodies(name: str, link: str, ttl_minutes: int) -> tuple[str, str]:
     html = (
         '<div dir="rtl" style="font-family:system-ui,sans-serif;line-height:1.7">'
         f"<p>مرحباً {name}،</p>"
-        "<p>وصلنا طلب لإعادة تعيين كلمة مرور حسابك في أصيلو.</p>"
+        "<p>وصلنا طلب لإعادة تعيين كلمة مرور حسابك في V.onemedia.</p>"
         f'<p><a href="{link}">إعادة تعيين كلمة المرور</a></p>'
         f"<p>الرابط صالح لمدة {ttl_minutes} دقيقة. إن لم تطلب ذلك، تجاهل هذه الرسالة.</p>"
         "</div><hr>"
         '<div dir="ltr" style="font-family:system-ui,sans-serif;line-height:1.7">'
         f"<p>Hi {name},</p>"
-        "<p>We received a request to reset your ASEELO password.</p>"
+        "<p>We received a request to reset your V.onemedia password.</p>"
         f'<p><a href="{link}">Reset your password</a></p>'
         f"<p>This link is valid for {ttl_minutes} minutes. If you did not request it, ignore "
         "this email.</p>"

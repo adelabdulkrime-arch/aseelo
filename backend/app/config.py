@@ -106,7 +106,7 @@ class Settings(BaseSettings):
     # provider (SES, Resend, Postmark, Mailgun, Zoho...), which is why there is
     # no vendor SDK here.
     mail_backend: Literal["console", "smtp"] = "console"
-    mail_from: str = "ASEELO <no-reply@localhost>"
+    mail_from: str = "V.onemedia <no-reply@localhost>"
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -165,6 +165,18 @@ class Settings(BaseSettings):
             )
         if "localhost" in self.app_public_url or "127.0.0.1" in self.app_public_url:
             problems.append("APP_PUBLIC_URL still points at localhost; reset links would be dead")
+        # Not fatal: an install with no mail provider yet is a legitimate state,
+        # and refusing to boot over it would take the whole app down. But it is
+        # silent otherwise - the reset endpoint returns 200 and the mail never
+        # arrives - so it must be loud at startup.
+        if self.mail_backend == "console":
+            import warnings
+
+            warnings.warn(
+                "MAIL_BACKEND=console in production: password reset emails are NOT delivered. "
+                "Set MAIL_BACKEND=smtp with SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD to enable them.",
+                stacklevel=2,
+            )
 
         if problems:
             raise ValueError(
