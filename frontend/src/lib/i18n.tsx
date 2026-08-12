@@ -170,6 +170,18 @@ const STRINGS = {
   uploadLogo: { ar: "رفع شعار", en: "Upload logo" },
   changeLogo: { ar: "تغيير الشعار", en: "Change logo" },
   logoHint: { ar: "PNG أو JPG أو WEBP، حتى ٥ ميجابايت", en: "PNG, JPG or WEBP, up to 5 MB" },
+  maxDurationHint: {
+    ar: "أقصى مدة للفيديو: {max} ثانية",
+    en: "Maximum video length: {max} seconds",
+  },
+  guestDurationNote: {
+    ar: "أنشئ حساباً لرفع مقاطع أطول",
+    en: "create an account for longer clips",
+  },
+  videoTooLong: {
+    ar: "الفيديو طويل ({actual} ثانية). الحد الأقصى {max} ثانية.",
+    en: "This video is too long ({actual}s). The maximum is {max}s.",
+  },
   logoNoTransparency: {
     ar: "شعارك بدون خلفية شفافة — قد يظهر بمربع أبيض. يُفضل استخدام صيغة PNG مفرغة.",
     en: "Your logo has no transparent background — it may show as a white box. A cut-out PNG works best.",

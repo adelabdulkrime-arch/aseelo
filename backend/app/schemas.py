@@ -58,6 +58,11 @@ class UserOut(ORMModel):
     # Lets the UI offer "keep your work - create a real account" instead of
     # showing a guest an email address they never chose.
     is_guest: bool = False
+    # The caller's own upload ceiling, in seconds. Sent because the limit
+    # differs per account type: without it the UI can only discover the rule by
+    # having the user upload a file and be rejected, which is the whole reason
+    # a valid clip appeared to "just fail".
+    max_video_duration_seconds: int | None = None
     created_at: datetime
 
 

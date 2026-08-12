@@ -5,14 +5,35 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { Alert, ErrorState, Field, LoadingState, Spinner } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { formatBytes } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import type { Template } from "@/lib/types";
 
 const MAX_TEXT = 600;
 
+/** Read a local file's duration without uploading it. */
+function readDuration(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+    const done = (value: number | null) => {
+      URL.revokeObjectURL(url);
+      resolve(value);
+    };
+    probe.onloadedmetadata = () =>
+      done(Number.isFinite(probe.duration) ? probe.duration : null);
+    // A codec the browser cannot read is not a rejection - the server still
+    // validates, so fall through rather than blocking a valid upload.
+    probe.onerror = () => done(null);
+    probe.src = url;
+  });
+}
+
 export default function CreateVideoPage() {
   const { t, locale } = useI18n();
+  const { user } = useAuth();
   const router = useRouter();
 
   const [templates, setTemplates] = useState<Template[] | null>(null);
@@ -26,6 +47,10 @@ export default function CreateVideoPage() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  // The server sends the ceiling that applies to THIS account: a guest gets a
+  // shorter one than a registered user.
+  const maxDuration = user?.max_video_duration_seconds ?? null;
 
   async function loadTemplates() {
     setLoadError(null);
@@ -132,9 +157,23 @@ export default function CreateVideoPage() {
             type="file"
             accept="video/mp4,video/quicktime,video/x-matroska,video/webm,video/x-msvideo"
             className="sr-only"
-            onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null);
+            onChange={async (e) => {
+              const chosen = e.target.files?.[0] ?? null;
+              setFile(chosen);
               setFieldErrors((prev) => ({ ...prev, video_file: "" }));
+              // Catch an over-long clip here rather than after the upload: the
+              // server rejects it either way, but only this is instant.
+              if (chosen && maxDuration) {
+                const seconds = await readDuration(chosen);
+                if (seconds !== null && seconds > maxDuration + 0.5) {
+                  setFieldErrors((prev) => ({
+                    ...prev,
+                    video_file: t("videoTooLong")
+                      .replace("{actual}", String(Math.round(seconds)))
+                      .replace("{max}", String(maxDuration)),
+                  }));
+                }
+              }
             }}
             disabled={submitting}
           />
@@ -158,6 +197,12 @@ export default function CreateVideoPage() {
               <>
                 <span className="font-semibold">{t("chooseFile")}</span>
                 <span className="text-xs text-ink-muted">{t("dropHint")}</span>
+                {maxDuration !== null && (
+                  <span className="text-xs font-medium text-ink-muted">
+                    {t("maxDurationHint").replace("{max}", String(maxDuration))}
+                    {user?.is_guest ? ` — ${t("guestDurationNote")}` : ""}
+                  </span>
+                )}
               </>
             )}
           </label>

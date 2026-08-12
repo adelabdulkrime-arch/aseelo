@@ -90,6 +90,22 @@ class User(TimestampMixin, Base):
         Boolean, default=False, nullable=False, server_default="false", index=True
     )
 
+    @property
+    def max_video_duration_seconds(self) -> int:
+        """The upload ceiling that applies to this account, in seconds.
+
+        Defined here, not at the call sites, so the value the UI is told can
+        never drift from the one POST /api/videos actually enforces.
+        """
+        from app.config import settings
+
+        if self.is_guest:
+            return min(
+                settings.guest_max_video_duration_seconds,
+                settings.max_video_duration_seconds,
+            )
+        return settings.max_video_duration_seconds
+
     brand_profile: Mapped["BrandProfile | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )

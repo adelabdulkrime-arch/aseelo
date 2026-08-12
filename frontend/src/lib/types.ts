@@ -23,6 +23,8 @@ export interface User {
   /** Session minted by /api/auth/guest rather than a chosen account. The
    *  address is a synthetic `@guest.aseelo.example` one, so never show it as theirs. */
   is_guest: boolean;
+  /** Upload ceiling for THIS account in seconds - guests get a shorter one. */
+  max_video_duration_seconds?: number | null;
   created_at: string;
 }
 
