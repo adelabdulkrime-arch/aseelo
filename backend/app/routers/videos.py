@@ -52,6 +52,11 @@ def serialize_video(video: Video) -> VideoOut:
         id=video.id,
         title=video.title,
         text_content=video.text_content,
+        # Built field by field rather than from_attributes, so anything added to
+        # the model has to be listed here too or it silently serialises as its
+        # default - which is exactly how captions first came back empty.
+        captions=video.captions or [],
+        quality=video.quality,
         template_id=video.template_id,
         status=video.status,
         output_file_url=storage.public_url(video.output_file_url) if video.output_file_url else None,

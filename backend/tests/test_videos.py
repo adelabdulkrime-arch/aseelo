@@ -8,6 +8,7 @@ end-to-end smoke test.
 from __future__ import annotations
 
 import io
+import json
 import subprocess
 import uuid
 
@@ -73,6 +74,65 @@ def test_create_video_queues_a_job(client, user, template, clip, _no_broker):
     assert body["job"]["status"] == JobStatus.QUEUED.value
     assert len(body["job"]["steps"]) == 8
     assert _no_broker == [(body["id"], body["job"]["id"])]
+
+
+def test_created_video_returns_the_captions_it_was_given(client, user, template, clip, _no_broker):
+    """serialize_video builds VideoOut field by field, so a new column is easy
+    to store correctly and still return as its default. This caught exactly
+    that: the row had the captions, the response did not."""
+    captions = [
+        {
+            "id": "t1",
+            "content": "الهوك",
+            "start_time": 0.0,
+            "end_time": 3.0,
+            "position": "top",
+            "animation": "fade",
+        },
+        {
+            "id": "t2",
+            "content": "التواصل",
+            "start_time": 4.0,
+            "end_time": 8.0,
+            "position": "bottom",
+            "animation": "none",
+        },
+    ]
+    response = _create(
+        client, user, template, clip, captions=json.dumps(captions), quality="high"
+    )
+    assert response.status_code == 201, response.text
+
+    body = response.json()
+    assert [c["id"] for c in body["captions"]] == ["t1", "t2"]
+    assert body["captions"][0]["position"] == "top"
+    assert body["quality"] == "high"
+
+    # And the same on a re-read, not just the create response.
+    again = client.get(f"/api/videos/{body['id']}", headers=user["headers"]).json()
+    assert len(again["captions"]) == 2
+    assert again["quality"] == "high"
+
+
+def test_captions_must_not_overlap_inside_one_band(client, user, template, clip, _no_broker):
+    captions = [
+        {"id": "a", "content": "أول", "start_time": 0.0, "end_time": 5.0, "position": "center"},
+        {"id": "b", "content": "ثاني", "start_time": 4.0, "end_time": 8.0, "position": "center"},
+    ]
+    response = _create(client, user, template, clip, captions=json.dumps(captions))
+    assert response.status_code == 422
+    assert "overlap" in response.text.lower()
+
+
+def test_malformed_caption_json_is_rejected(client, user, template, clip, _no_broker):
+    response = _create(client, user, template, clip, captions="{not json")
+    assert response.status_code == 422
+
+
+def test_a_video_without_captions_returns_an_empty_list(client, user, template, clip, _no_broker):
+    body = _create(client, user, template, clip).json()
+    assert body["captions"] == []
+    assert body["quality"] == "balanced"
 
 
 def test_create_video_without_auto_render_stays_draft(client, user, template, clip, _no_broker):
