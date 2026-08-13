@@ -26,12 +26,14 @@ class QualityPreset:
     preset: str
 
 
-# CRF is logarithmic: +3 is roughly half the bitrate. 26/23/20 spans "clearly
-# compressed" to "indistinguishable from source" for 9:16 phone footage.
+# One resolution per name. Two presets that both said 1080p differed only by an
+# invisible CRF, which reads as a broken menu rather than a choice.
+# CRF is logarithmic: +3 is roughly half the bitrate.
 PRESETS: dict[str, QualityPreset] = {
-    "fast": QualityPreset("fast", 720, 1280, 26, "veryfast"),
-    "balanced": QualityPreset("balanced", 1080, 1920, 23, "veryfast"),
-    "high": QualityPreset("high", 1080, 1920, 20, "medium"),
+    # Portrait 9:16 throughout - the short edge is the width.
+    "fast": QualityPreset("fast", 480, 854, 26, "veryfast"),
+    "balanced": QualityPreset("balanced", 720, 1280, 23, "veryfast"),
+    "high": QualityPreset("high", 1080, 1920, 20, "veryfast"),
 }
 
 DEFAULT_QUALITY = "balanced"

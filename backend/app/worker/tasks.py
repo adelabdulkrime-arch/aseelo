@@ -164,11 +164,12 @@ def _run_pipeline(
         has_audio=media.has_audio,
         background_mode=background_cfg.get("mode", "cover"),
         blur_sigma=float(background_cfg.get("blur_sigma", 25.0)),
-        width=canvas_w,
-        height=canvas_h,
+        # The preset decides the output size. The overlay is composed at the
+        # template's canvas size and scaled by the same filter chain, so the
+        # text stays proportionally identical - it is not re-laid out.
+        width=quality.width,
+        height=quality.height,
         captions=rendered_captions,
-        # The canvas stays as the template composed it; quality only changes
-        # the encode. Scaling the frame here would resample the overlay text.
         crf=quality.crf,
         preset=quality.preset,
     )

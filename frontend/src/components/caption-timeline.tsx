@@ -49,6 +49,9 @@ export function CaptionTimeline({ captions, duration, onChange, disabled = false
   const { t } = useI18n();
   const trackRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  // Mirrors `drag.current` in state so the bar can show a live readout; the ref
+  // stays the source of truth for the pointer maths.
+  const [dragging, setDragging] = useState<string | null>(null);
   const drag = useRef<{ id: string; mode: DragMode; grabOffset: number } | null>(null);
 
   const span = Math.max(duration, 1);
@@ -86,22 +89,38 @@ export function CaptionTimeline({ captions, duration, onChange, disabled = false
       const at = secondsAt(event.clientX);
       const length = caption.end_time - caption.start_time;
 
+      // The server rejects captions that overlap inside one band, so the drag
+      // is fenced by its neighbours in that band - the bar simply stops rather
+      // than letting the user build something that will be refused on submit.
+      const neighbours = captions.filter(
+        (c) => c.id !== caption.id && c.position === caption.position,
+      );
+      const floor = Math.max(
+        0,
+        ...neighbours.filter((c) => c.end_time <= caption.start_time).map((c) => c.end_time),
+      );
+      const ceiling = Math.min(
+        span,
+        ...neighbours.filter((c) => c.start_time >= caption.end_time).map((c) => c.start_time),
+      );
+
       if (active.mode === "move") {
-        const start = clamp(round(at - active.grabOffset), 0, span - length);
+        const start = clamp(round(at - active.grabOffset), floor, round(ceiling - length));
         update(active.id, { start_time: start, end_time: round(start + length) });
       } else if (active.mode === "start") {
         update(active.id, {
-          start_time: clamp(at, 0, round(caption.end_time - MIN_SECONDS)),
+          start_time: clamp(at, floor, round(caption.end_time - MIN_SECONDS)),
         });
       } else {
         update(active.id, {
-          end_time: clamp(at, round(caption.start_time + MIN_SECONDS), span),
+          end_time: clamp(at, round(caption.start_time + MIN_SECONDS), ceiling),
         });
       }
     }
 
     function onUp() {
       drag.current = null;
+      setDragging(null);
     }
 
     window.addEventListener("pointermove", onMove);
@@ -117,6 +136,7 @@ export function CaptionTimeline({ captions, duration, onChange, disabled = false
     event.preventDefault();
     event.stopPropagation();
     setSelected(caption.id);
+    setDragging(caption.id);
     drag.current = {
       id: caption.id,
       mode,
@@ -226,6 +246,20 @@ export function CaptionTimeline({ captions, duration, onChange, disabled = false
                   className="h-full w-2 shrink-0 cursor-ew-resize rounded-e-md bg-black/20"
                   aria-hidden="true"
                 />
+
+                {/* Live readout while dragging: the bar shows where it is, but
+                    only the numbers say exactly where it lands. */}
+                {dragging === caption.id && (
+                  <span
+                    dir="ltr"
+                    // Inside the bar, not above it: the track clips overflow,
+                    // so a tooltip on the top lane would be cut off.
+                    className="pointer-events-none absolute inset-x-0 -bottom-0.5 mx-auto w-fit whitespace-nowrap rounded bg-slate-900/90 px-1.5 text-[10px] font-semibold tabular-nums text-white"
+                  >
+                    {caption.start_time.toFixed(1)} → {caption.end_time.toFixed(1)}
+                    {t("secondsShort")}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -255,6 +289,59 @@ export function CaptionTimeline({ captions, duration, onChange, disabled = false
             className="w-full rounded-lg border border-slate-200 p-2 text-sm"
           />
 
+          {/* Dragging is for finding the beat; these are for landing on an
+              exact second, and for seeing the window as a number. */}
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs text-ink-muted">
+              <span className="mb-1 block">{t("captionFrom")}</span>
+              <input
+                type="number"
+                dir="ltr"
+                step={0.1}
+                min={0}
+                max={round(active.end_time - MIN_SECONDS)}
+                value={active.start_time}
+                disabled={disabled}
+                onChange={(e) =>
+                  update(active.id, {
+                    start_time: clamp(
+                      round(Number(e.target.value)),
+                      0,
+                      round(active.end_time - MIN_SECONDS),
+                    ),
+                  })
+                }
+                className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-sm tabular-nums"
+              />
+            </label>
+            <label className="text-xs text-ink-muted">
+              <span className="mb-1 block">{t("captionTo")}</span>
+              <input
+                type="number"
+                dir="ltr"
+                step={0.1}
+                min={round(active.start_time + MIN_SECONDS)}
+                max={span}
+                value={active.end_time}
+                disabled={disabled}
+                onChange={(e) =>
+                  update(active.id, {
+                    end_time: clamp(
+                      round(Number(e.target.value)),
+                      round(active.start_time + MIN_SECONDS),
+                      span,
+                    ),
+                  })
+                }
+                className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-sm tabular-nums"
+              />
+            </label>
+            <span className="pb-2 text-xs tabular-nums text-ink-muted">
+              {t("captionDuration")}: {(active.end_time - active.start_time).toFixed(1)}
+              {t("secondsShort")}
+            </span>
+          </div>
+
           <div className="flex flex-wrap items-center gap-2">
             {POSITIONS.map((position) => (
               <button
@@ -283,11 +370,6 @@ export function CaptionTimeline({ captions, duration, onChange, disabled = false
               <option value="slide_up">{t("animSlideUp")}</option>
               <option value="none">{t("animNone")}</option>
             </select>
-
-            <span className="ms-auto text-xs tabular-nums text-ink-muted">
-              {active.start_time.toFixed(1)} → {active.end_time.toFixed(1)}
-              {t("secondsShort")}
-            </span>
 
             <button
               type="button"
