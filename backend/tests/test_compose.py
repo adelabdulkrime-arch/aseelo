@@ -11,7 +11,7 @@ from app.video.compose import (
     resolve_color,
     resolve_source,
 )
-from app.video.templates import TEMPLATE_SEEDS
+from app.video.templates import CAPTION_TEMPLATE_SLUG, TEMPLATE_SEEDS
 
 ARABIC = "عروضنا الجديدة متوفرة الآن"
 
@@ -75,10 +75,14 @@ def test_every_seeded_template_flattens_to_one_canvas(tmp_path):
         assert result.image.size == canvas_size(config) == (1080, 1920)
         assert result.image.mode == "RGBA"
         assert result.image.getchannel("A").getbbox() is not None
-        # Text, logo and brand layers were all drawn.
-        assert "headline" in result.layers_drawn
         assert "brand-logo" in result.layers_drawn
         assert not result.layers_skipped or "brand-logo" not in result.layers_skipped
+        # The caption-driven template carries no headline on the static overlay:
+        # its words are painted per caption, each on its own timed layer.
+        if seed["slug"] != CAPTION_TEMPLATE_SLUG:
+            assert "headline" in result.layers_drawn
+        else:
+            assert "headline" not in result.layers_drawn
 
 
 def test_missing_logo_is_skipped_not_fatal():

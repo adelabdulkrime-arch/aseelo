@@ -35,6 +35,21 @@ export interface TokenResponse {
   user: User;
 }
 
+export type VideoQuality = "fast" | "balanced" | "high";
+
+export type CaptionPosition = "top" | "center" | "bottom";
+export type CaptionAnimation = "none" | "fade" | "zoom_fade" | "slide_up";
+
+/** One timed line of text painted over the video. */
+export interface Caption {
+  id: string;
+  content: string;
+  start_time: number;
+  end_time: number;
+  position: CaptionPosition;
+  animation: CaptionAnimation;
+}
+
 export interface Brand {
   id: string;
   brand_name: string;
@@ -82,6 +97,8 @@ export interface Template {
   configuration: Record<string, unknown>;
   is_active: boolean;
   sort_order: number;
+  /** True for the template driven by a caption track instead of one headline. */
+  supports_captions: boolean;
 }
 
 export interface JobStep {
@@ -110,6 +127,9 @@ export interface Video {
   id: string;
   title: string | null;
   text_content: string;
+  /** Empty for the classic templates, which carry their text in text_content. */
+  captions: Caption[];
+  quality: VideoQuality;
   template_id: string | null;
   status: VideoStatus;
   output_file_url: string | null;

@@ -329,6 +329,75 @@ TEMPLATE_03 = _base(
 )
 
 
+# ---------------------------------------------------------------------------
+# Template 04 - Timed captions
+#
+# Built for the caption track rather than for a single static headline, so it
+# deliberately omits the two things that fight with moving text:
+#   * no `highlight` plate - the coloured box behind Template 03's headline
+#     would sit under every caption and follow none of them
+#   * no `accent-underline` bar - it marks a fixed headline position, and here
+#     the text moves between bands
+# There is no `text_content` layer at all: the words come from the captions,
+# each painted at its own time. What stays is the brand furniture - a soft
+# bottom scrim for legibility, the logo, and optional contact details.
+# ---------------------------------------------------------------------------
+TEMPLATE_04 = _base(
+    background={"mode": "cover", "overlay_color": "$black", "overlay_alpha": 0.18},
+    layers=[
+        {
+            # Keeps bottom captions readable over a bright clip without tinting
+            # the middle of the frame, where the main message usually sits.
+            "type": "gradient",
+            "box": {"x": 0, "y": 1420, "w": 1080, "h": 500},
+            "color": "$black",
+            "from_alpha": 0.0,
+            "to_alpha": 0.72,
+        },
+        {
+            "type": "logo",
+            "name": "brand-logo",
+            "box": {"x": 820, "y": 120, "w": 180, "h": 180},
+            "fit": "contain",
+            "opacity": 1.0,
+        },
+        {
+            # Optional, like every text layer: an empty source is skipped, so a
+            # user who leaves the brand name blank simply gets no line here.
+            "type": "text",
+            "name": "brand-name",
+            "source": "brand_name",
+            "box": {"x": 80, "y": 150, "w": 700, "h": 80},
+            "style": {
+                "bold": True,
+                "size": 44,
+                "min_size": 24,
+                "color": "$accent",
+                "align": "start",
+                "max_lines": 1,
+                "shadow": True,
+            },
+        },
+        {
+            "type": "text",
+            "name": "contact",
+            "source": "contact_inline",
+            "box": {"x": 80, "y": 1760, "w": 920, "h": 64},
+            "style": {
+                "bold": False,
+                "size": 34,
+                "min_size": 20,
+                "color": "$white",
+                "color_alpha": 0.92,
+                "align": "center",
+                "max_lines": 1,
+                "shadow": True,
+            },
+        },
+    ],
+)
+
+
 TEMPLATE_SEEDS: list[dict[str, Any]] = [
     {
         "slug": "clean-minimal",
@@ -360,4 +429,18 @@ TEMPLATE_SEEDS: list[dict[str, Any]] = [
         "sort_order": 30,
         "configuration": TEMPLATE_03,
     },
+    {
+        "slug": "timed-captions",
+        "name": "Template 04 - Timed Captions",
+        "description": (
+            "Caption-driven layout: you write several lines and choose when each appears and "
+            "where on the frame it sits. No headline plate and no accent bar, so nothing "
+            "competes with the moving text. Logo, brand name and contact details are optional."
+        ),
+        "sort_order": 40,
+        "configuration": TEMPLATE_04,
+    },
 ]
+
+# Slug of the one template driven by a caption track rather than text_content.
+CAPTION_TEMPLATE_SLUG = "timed-captions"

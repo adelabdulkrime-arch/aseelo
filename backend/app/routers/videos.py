@@ -4,8 +4,9 @@
 # FastAPI resolve string annotations against slowapi's module globals, where this
 # module's dependency aliases do not exist, so they degrade into required body fields.
 
+import json
 import uuid
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
@@ -21,12 +22,14 @@ from app.logging_config import get_logger
 from app.models import JobStatus, RenderingJob, Template, Video, VideoStatus
 from app.rate_limit import limiter
 from app.schemas import (
+    Caption,
     JobOut,
     MessageResponse,
     TemplateOut,
     VideoCreateForm,
     VideoListOut,
     VideoOut,
+    validate_caption_track,
 )
 from app.services.file_validation import validate_video_upload
 from app.services.pipeline import initial_steps_payload
@@ -83,6 +86,46 @@ def _validated_form(**fields: object) -> VideoCreateForm:
         raise ValidationError("Invalid request payload", details=details) from exc
 
 
+def _validated_captions(raw: str | None) -> list[dict[str, Any]]:
+    """Parse the `captions` multipart field, which carries JSON as a string.
+
+    Multipart has no native array type, so the timeline editor sends the track
+    as one JSON blob. Absent or empty means "no captions" - the classic
+    templates never send it.
+    """
+    if not raw or not raw.strip():
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValidationError(
+            "Captions must be valid JSON",
+            details=[{"field": "captions", "message": str(exc)}],
+        ) from exc
+
+    if not isinstance(parsed, list):
+        raise ValidationError(
+            "Captions must be a list",
+            details=[{"field": "captions", "message": "expected a list of captions"}],
+        )
+
+    try:
+        track = [Caption.model_validate(item) for item in parsed]
+        validate_caption_track(track)
+    except PydanticValidationError as exc:
+        details = [
+            {"field": "captions." + ".".join(str(p) for p in err["loc"]), "message": err["msg"]}
+            for err in exc.errors()
+        ]
+        raise ValidationError("Invalid captions", details=details) from exc
+    except ValueError as exc:
+        raise ValidationError(
+            str(exc), details=[{"field": "captions", "message": str(exc)}]
+        ) from exc
+
+    return [caption.model_dump() for caption in track]
+
+
 @router.post("", response_model=VideoOut, status_code=201)
 @limiter.limit(settings.upload_rate_limit)
 def create_video(
@@ -94,13 +137,17 @@ def create_video(
     template_id: Annotated[str, Form()],
     title: Annotated[str | None, Form()] = None,
     auto_render: Annotated[bool, Form()] = True,
+    captions: Annotated[str | None, Form()] = None,
+    quality: Annotated[str, Form()] = "balanced",
 ) -> VideoOut:
     payload = _validated_form(
         title=title,
         text_content=text_content,
         template_id=template_id,
         auto_render=auto_render,
+        quality=quality,
     )
+    caption_track = _validated_captions(captions)
 
     template = db.get(Template, payload.template_id)
     if template is None or not template.is_active:
@@ -126,6 +173,8 @@ def create_video(
         template_id=template.id,
         title=payload.title,
         text_content=payload.text_content,
+        captions=caption_track or None,
+        quality=payload.quality,
         input_file_url=input_key,
         input_file_size=validated.size,
         width=validated.media.width if validated.media else None,

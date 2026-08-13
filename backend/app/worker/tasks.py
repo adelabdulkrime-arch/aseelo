@@ -20,7 +20,9 @@ from app.database import session_scope
 from app.models import JobStatus, RenderingJob, Video, VideoStatus
 from app.services.pipeline import JobProgress
 from app.storage import Storage, build_key, get_storage
+from app.video import captions as captions_mod
 from app.video import compose
+from app.video import quality_presets
 from app.video import render as render_mod
 from app.video.probe import MediaInfo, ProbeError, probe
 from app.video.quality import validate_output
@@ -128,13 +130,32 @@ def _run_pipeline(
     progress.start_step("text")
     result = compose.build_overlay(config, brand_context, video.text_content, video.title)
     result.image.save(overlay_path)
+
+    # Timed captions are NOT part of that flattened overlay: each needs its own
+    # image so FFmpeg can switch it on and off over a time window.
+    canvas_w, canvas_h = compose.canvas_size(config)
+    rendered_captions = captions_mod.render_captions(
+        video.captions or [],
+        brand_context,
+        (canvas_w, canvas_h),
+        workdir,
+    )
+    # A caption that runs past the end of the clip would never be seen; clamp it
+    # so the filter graph cannot reference a window outside the video.
+    rendered_captions = [
+        caption
+        for caption in rendered_captions
+        if caption.start_time < float(media.duration)
+    ]
+    for caption in rendered_captions:
+        caption.end_time = min(caption.end_time, float(media.duration))
     progress.complete_step("text")
     progress.start_step("logo")
     progress.complete_step("logo")
 
     # ---------------- rendering ----------------
     progress.start_step("rendering")
-    canvas_w, canvas_h = compose.canvas_size(config)
+    quality = quality_presets.resolve(video.quality)
     request = render_mod.RenderRequest(
         input_path=input_path,
         overlay_path=overlay_path,
@@ -145,6 +166,11 @@ def _run_pipeline(
         blur_sigma=float(background_cfg.get("blur_sigma", 25.0)),
         width=canvas_w,
         height=canvas_h,
+        captions=rendered_captions,
+        # The canvas stays as the template composed it; quality only changes
+        # the encode. Scaling the frame here would resample the overlay text.
+        crf=quality.crf,
+        preset=quality.preset,
     )
     try:
         render_result = render_mod.render(

@@ -3,12 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
+import { CaptionTimeline } from "@/components/caption-timeline";
 import { Alert, ErrorState, Field, LoadingState, Spinner } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatBytes } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
-import type { Template } from "@/lib/types";
+import type { Caption, Template, VideoQuality } from "@/lib/types";
 
 const MAX_TEXT = 600;
 
@@ -44,9 +45,16 @@ export default function CreateVideoPage() {
   const [templateId, setTemplateId] = useState("");
   const [file, setFile] = useState<File | null>(null);
 
+  const [captions, setCaptions] = useState<Caption[]>([]);
+  const [clipDuration, setClipDuration] = useState<number | null>(null);
+  const [quality, setQuality] = useState<VideoQuality>("balanced");
+
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  const selectedTemplate = templates?.find((item) => item.id === templateId) ?? null;
+  const usesCaptions = selectedTemplate?.supports_captions ?? false;
 
   // The server sends the ceiling that applies to THIS account: a guest gets a
   // shorter one than a registered user.
@@ -73,19 +81,32 @@ export default function CreateVideoPage() {
     setError(null);
 
     const local: Record<string, string> = {};
-    if (!text.trim()) local.text_content = t("textRequired");
     if (!file) local.video_file = t("fileRequired");
     if (!templateId) local.template_id = t("templateRequired");
+    if (usesCaptions) {
+      // The words live in the caption track for this template, so text_content
+      // is not what the user filled in - require at least one real caption.
+      if (!captions.some((caption) => caption.content.trim())) {
+        local.captions = t("captionsRequired");
+      }
+    } else if (!text.trim()) {
+      local.text_content = t("textRequired");
+    }
     setFieldErrors(local);
     if (Object.keys(local).length > 0) return;
 
     setSubmitting(true);
     try {
+      const track = captions.filter((caption) => caption.content.trim());
       const video = await api.createVideo({
-        text_content: text.trim(),
+        // The backend still requires text_content; for a caption video the
+        // first line doubles as the title/summary rather than being painted.
+        text_content: usesCaptions ? track[0].content.trim() : text.trim(),
         template_id: templateId,
         title: title.trim() || undefined,
         file: file!,
+        captions: usesCaptions ? track : undefined,
+        quality,
       });
       router.replace(`/videos/${video.id}`);
     } catch (cause) {
@@ -129,25 +150,80 @@ export default function CreateVideoPage() {
             />
           </Field>
 
-          <Field
-            label={t("videoText")}
-            htmlFor="text_content"
-            hint={t("videoTextHint")}
-            error={fieldErrors.text_content}
-          >
-            <textarea
-              id="text_content"
-              className="input min-h-28 resize-y"
-              value={text}
-              onChange={(e) => setText(e.target.value.slice(0, MAX_TEXT))}
-              maxLength={MAX_TEXT}
-              required
-              disabled={submitting}
-            />
-            <p className="mt-1 text-end text-xs tabular-nums text-ink-muted">
-              {text.length}/{MAX_TEXT}
-            </p>
-          </Field>
+          {/* The caption template carries its words on the timeline instead. */}
+          {!usesCaptions && (
+            <Field
+              label={t("videoText")}
+              htmlFor="text_content"
+              hint={t("videoTextHint")}
+              error={fieldErrors.text_content}
+            >
+              <textarea
+                id="text_content"
+                className="input min-h-28 resize-y"
+                value={text}
+                onChange={(e) => setText(e.target.value.slice(0, MAX_TEXT))}
+                maxLength={MAX_TEXT}
+                required
+                disabled={submitting}
+              />
+              <p className="mt-1 text-end text-xs tabular-nums text-ink-muted">
+                {text.length}/{MAX_TEXT}
+              </p>
+            </Field>
+          )}
+        </section>
+
+        {usesCaptions && (
+          <section className="card p-5">
+            <h2 className="mb-1 font-bold">{t("timeline")}</h2>
+            <p className="mb-3 text-xs text-ink-muted">{t("captionsHint")}</p>
+            {!file ? (
+              // Timings are meaningless without knowing how long the clip is.
+              <p className="rounded-lg bg-slate-50 p-4 text-center text-sm text-ink-muted">
+                {t("fileRequired")}
+              </p>
+            ) : (
+              <CaptionTimeline
+                captions={captions}
+                duration={clipDuration ?? maxDuration ?? 15}
+                onChange={setCaptions}
+                disabled={submitting}
+              />
+            )}
+            {fieldErrors.captions && (
+              <p className="mt-2 text-sm text-red-600">{fieldErrors.captions}</p>
+            )}
+          </section>
+        )}
+
+        <section className="card p-5">
+          <h2 className="mb-3 font-bold">{t("quality")}</h2>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(
+              [
+                ["fast", "qualityFast", "qualityFastHint"],
+                ["balanced", "qualityBalanced", "qualityBalancedHint"],
+                ["high", "qualityHigh", "qualityHighHint"],
+              ] as const
+            ).map(([value, labelKey, hintKey]) => (
+              <button
+                key={value}
+                type="button"
+                disabled={submitting}
+                onClick={() => setQuality(value)}
+                aria-pressed={quality === value}
+                className={`rounded-xl border-2 p-3 text-start transition ${
+                  quality === value
+                    ? "border-brand bg-brand/5"
+                    : "border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                <span className="block text-sm font-semibold">{t(labelKey)}</span>
+                <span className="block text-xs text-ink-muted">{t(hintKey)}</span>
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="card p-5">
@@ -163,16 +239,17 @@ export default function CreateVideoPage() {
               setFieldErrors((prev) => ({ ...prev, video_file: "" }));
               // Catch an over-long clip here rather than after the upload: the
               // server rejects it either way, but only this is instant.
-              if (chosen && maxDuration) {
-                const seconds = await readDuration(chosen);
-                if (seconds !== null && seconds > maxDuration + 0.5) {
-                  setFieldErrors((prev) => ({
-                    ...prev,
-                    video_file: t("videoTooLong")
-                      .replace("{actual}", String(Math.round(seconds)))
-                      .replace("{max}", String(maxDuration)),
-                  }));
-                }
+              // One read serves both the length check and the caption
+              // timeline, which needs the real duration to place bars against.
+              const seconds = chosen ? await readDuration(chosen) : null;
+              setClipDuration(seconds);
+              if (seconds !== null && maxDuration && seconds > maxDuration + 0.5) {
+                setFieldErrors((prev) => ({
+                  ...prev,
+                  video_file: t("videoTooLong")
+                    .replace("{actual}", String(Math.round(seconds)))
+                    .replace("{max}", String(maxDuration)),
+                }));
               }
             }}
             disabled={submitting}

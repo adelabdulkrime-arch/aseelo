@@ -5,9 +5,17 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from app.models import JobStatus, UserRole, VideoStatus
 
@@ -160,6 +168,18 @@ class TemplateOut(ORMModel):
     is_active: bool
     sort_order: int
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def supports_captions(self) -> bool:
+        """True when this template is driven by a caption track.
+
+        Derived from the slug rather than stored, so there is one source of
+        truth and no column to fall out of sync with the seeds.
+        """
+        from app.video.templates import CAPTION_TEMPLATE_SLUG
+
+        return self.slug == CAPTION_TEMPLATE_SLUG
+
 
 # ---------------------------------------------------------------------------
 # Jobs
@@ -197,6 +217,75 @@ class JobOut(ORMModel):
 # ---------------------------------------------------------------------------
 # Videos
 # ---------------------------------------------------------------------------
+CaptionPosition = Literal["top", "center", "bottom"]
+CaptionAnimation = Literal["none", "fade", "zoom_fade", "slide_up"]
+
+# A caption shorter than this cannot be read; one this long is almost always a
+# mistake in the timeline editor rather than an intent.
+MIN_CAPTION_SECONDS = 0.3
+MAX_CAPTIONS = 12
+
+
+class Caption(BaseModel):
+    """One timed line of text painted over the video."""
+
+    id: str = Field(min_length=1, max_length=40)
+    content: str = Field(min_length=1, max_length=200)
+    start_time: float = Field(ge=0, le=600)
+    end_time: float = Field(gt=0, le=600)
+    position: CaptionPosition = "center"
+    animation: CaptionAnimation = "fade"
+
+    @field_validator("content")
+    @classmethod
+    def _clean_content(cls, value: str) -> str:
+        value = "".join(ch for ch in value if ch == "\n" or ch >= " ").strip()
+        if not value:
+            raise ValueError("Caption text is required")
+        if value.count("\n") > 3:
+            raise ValueError("A caption may span at most 4 lines")
+        return value
+
+    @model_validator(mode="after")
+    def _check_window(self) -> "Caption":
+        if self.end_time <= self.start_time:
+            raise ValueError("A caption must end after it starts")
+        if self.end_time - self.start_time < MIN_CAPTION_SECONDS:
+            raise ValueError(f"A caption must last at least {MIN_CAPTION_SECONDS}s")
+        return self
+
+
+def validate_caption_track(captions: list[Caption]) -> list[Caption]:
+    """Reject a track that cannot be rendered sensibly.
+
+    Overlap is checked per *position*: two captions in the same band would draw
+    on top of each other, but a hook at the top and a CTA at the bottom running
+    at the same moment is a normal design, not a conflict.
+    """
+    if len(captions) > MAX_CAPTIONS:
+        raise ValueError(f"At most {MAX_CAPTIONS} captions are supported")
+
+    seen_ids: set[str] = set()
+    for caption in captions:
+        if caption.id in seen_ids:
+            raise ValueError(f"Duplicate caption id '{caption.id}'")
+        seen_ids.add(caption.id)
+
+    by_position: dict[str, list[Caption]] = {}
+    for caption in captions:
+        by_position.setdefault(caption.position, []).append(caption)
+
+    for position, group in by_position.items():
+        ordered = sorted(group, key=lambda c: c.start_time)
+        for earlier, later in zip(ordered, ordered[1:]):
+            if later.start_time < earlier.end_time:
+                raise ValueError(
+                    f"Captions overlap in the '{position}' band: "
+                    f"'{earlier.content[:20]}' and '{later.content[:20]}'"
+                )
+    return captions
+
+
 class VideoCreateForm(BaseModel):
     """Validated view of the multipart form used by POST /api/videos."""
 
@@ -204,6 +293,7 @@ class VideoCreateForm(BaseModel):
     text_content: str = Field(min_length=1, max_length=600)
     template_id: uuid.UUID
     auto_render: bool = True
+    quality: Literal["fast", "balanced", "high"] = "balanced"
 
     @field_validator("text_content")
     @classmethod
@@ -230,6 +320,8 @@ class VideoOut(ORMModel):
     id: uuid.UUID
     title: str | None
     text_content: str
+    captions: list[Caption] = Field(default_factory=list)
+    quality: str = "balanced"
     template_id: uuid.UUID | None
     status: VideoStatus
     output_file_url: str | None
@@ -244,6 +336,13 @@ class VideoOut(ORMModel):
     completed_at: datetime | None
     template: TemplateOut | None = None
     job: JobOut | None = None
+
+    @field_validator("captions", mode="before")
+    @classmethod
+    def _null_captions_to_empty(cls, value: Any) -> Any:
+        # The column is NULL for every video created before timed captions, and
+        # for the classic templates that never set one.
+        return value or []
 
     @field_validator("duration", mode="before")
     @classmethod
