@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, File, Query, UploadFile
 
 from app.deps import CurrentUser, DbSession, get_or_create_brand
@@ -48,8 +50,16 @@ def upload_logo(
     remove_white_background: bool = Query(
         default=False,
         description=(
-            "Opt-in: make a near-white background transparent. Off by default because "
-            "it also clears white that belongs to the design."
+            "Opt-in: make a flat background transparent. Off by default because "
+            "it also clears colour that belongs to the design."
+        ),
+    ),
+    cutout_mode: Literal["auto", "white"] = Query(
+        default="auto",
+        description=(
+            "'auto' samples the logo's own border colour, so it works on any flat "
+            "backdrop. 'white' is the original white-only rule, kept so an upload "
+            "that worked before keeps behaving identically."
         ),
     ),
 ) -> BrandOut:
@@ -63,7 +73,9 @@ def upload_logo(
 
         if remove_white_background and not validated.has_transparency:
             cutout_path = validated.temp_path.with_suffix(".cutout.png")
-            if logo_cutout.remove_white_background(validated.temp_path, cutout_path):
+            if logo_cutout.remove_background(
+                validated.temp_path, cutout_path, mode=cutout_mode
+            ):
                 cutout_applied = True
                 upload_path = cutout_path
                 extension = ".png"

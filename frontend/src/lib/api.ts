@@ -194,7 +194,7 @@ export const api = {
   uploadLogo: (file: File, removeWhiteBackground = false) => {
     const formData = new FormData();
     formData.append("file", file);
-    const query = removeWhiteBackground ? "?remove_white_background=true" : "";
+    const query = removeWhiteBackground ? "?remove_white_background=true&cutout_mode=auto" : "";
     return request<Brand>(`/api/brand/logo${query}`, { method: "POST", formData });
   },
 

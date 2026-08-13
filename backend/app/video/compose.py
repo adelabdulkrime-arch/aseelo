@@ -431,5 +431,27 @@ def render_preview(
         )
     overlay = build_overlay(config, brand, text_content).image
     base.alpha_composite(overlay)
+
+    # A caption-driven template has no headline layer - its words arrive as
+    # timed captions - so a plain overlay preview would be a thumbnail with no
+    # text at all. Paint one sample caption so the picker shows what it does.
+    if not any(layer.get("source") == "text_content" for layer in config.get("layers", [])):
+        from app.video.captions import band_box
+
+        x, y, w, h = band_box("center", size)
+        style = style_from_config(
+            {
+                "bold": True,
+                "size": 86,
+                "min_size": 36,
+                "color": "$white",
+                "align": "center",
+                "shadow": True,
+                "max_lines": 3,
+            },
+            brand,
+        )
+        base.alpha_composite(render_text_layer(text_content, style, w, h).image, dest=(x, y))
+
     height = int(size[1] * width / size[0])
     return base.convert("RGB").resize((width, height), Image.Resampling.LANCZOS)
