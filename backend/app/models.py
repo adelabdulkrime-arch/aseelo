@@ -250,6 +250,17 @@ class Video(Base):
 
     title: Mapped[str | None] = mapped_column(String(160))
     text_content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Timed captions: [{id, content, start_time, end_time, position, animation}].
+    # Empty for the classic templates, which paint one static overlay from
+    # text_content instead. Stored as JSONB rather than a child table because a
+    # caption has no identity outside its video and is always read as a whole.
+    captions: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    # fast | balanced | high. Resolved to concrete encoder settings at render
+    # time by app.video.quality_presets, so the meaning of a preset can change
+    # with the hardware without rewriting old rows.
+    quality: Mapped[str] = mapped_column(
+        String(16), default="balanced", server_default="balanced", nullable=False
+    )
 
     input_file_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     input_file_size: Mapped[int | None] = mapped_column(Integer)

@@ -7,6 +7,7 @@
 import type {
   Brand,
   BrandUpdate,
+  Caption,
   DashboardStats,
   Job,
   Template,
@@ -15,6 +16,7 @@ import type {
   Video,
   VideoFilter,
   VideoList,
+  VideoQuality,
   ApiErrorDetail,
 } from "./types";
 
@@ -192,7 +194,7 @@ export const api = {
   uploadLogo: (file: File, removeWhiteBackground = false) => {
     const formData = new FormData();
     formData.append("file", file);
-    const query = removeWhiteBackground ? "?remove_white_background=true" : "";
+    const query = removeWhiteBackground ? "?remove_white_background=true&cutout_mode=auto" : "";
     return request<Brand>(`/api/brand/logo${query}`, { method: "POST", formData });
   },
 
@@ -205,11 +207,17 @@ export const api = {
     template_id: string;
     title?: string;
     file: File;
+    captions?: Caption[];
+    quality?: VideoQuality;
   }) => {
     const formData = new FormData();
     formData.append("text_content", input.text_content);
     formData.append("template_id", input.template_id);
     if (input.title) formData.append("title", input.title);
+    if (input.quality) formData.append("quality", input.quality);
+    // Multipart has no array type, so the caption track travels as one JSON
+    // string and is parsed server-side.
+    if (input.captions?.length) formData.append("captions", JSON.stringify(input.captions));
     formData.append("video_file", input.file);
     return request<Video>("/api/videos", { method: "POST", formData });
   },

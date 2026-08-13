@@ -7,11 +7,13 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from app.config import settings
 from app.logging_config import get_logger
+from app.video.captions import ANIMATION_SECONDS
 
 logger = get_logger(__name__)
 
@@ -38,6 +40,9 @@ class RenderRequest:
     crf: int = 0
     preset: str = ""
     audio_bitrate: str = ""
+    # Timed captions, each its own FFmpeg input gated to a time window. Empty
+    # for the classic templates, which carry all their text in overlay_path.
+    captions: list[Any] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.width = self.width or settings.output_width
@@ -81,12 +86,70 @@ def build_filter_complex(request: RenderRequest) -> str:
             f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}[base]"
         )
 
-    return (
+    chain = (
         f"{base};"
         f"[1:v]scale={w}:{h}[ovl];"
-        f"[base][ovl]overlay=0:0:format=auto:eof_action=repeat[composed];"
-        f"[composed]fps={request.fps},setsar=1,format=yuv420p[outv]"
+        f"[base][ovl]overlay=0:0:format=auto:eof_action=repeat[composed]"
     )
+
+    if request.captions:
+        chain += ";" + _caption_chain(request, "composed", "captioned")
+        chain += f";[captioned]fps={request.fps},setsar=1,format=yuv420p[outv]"
+    else:
+        chain += f";[composed]fps={request.fps},setsar=1,format=yuv420p[outv]"
+    return chain
+
+
+def _ff_time(value: float) -> str:
+    """Format a timestamp for an FFmpeg expression."""
+    return f"{value:.3f}".rstrip("0").rstrip(".") or "0"
+
+
+def _caption_chain(request: RenderRequest, source: str, sink: str) -> str:
+    """Overlay each caption on its own time window, animated in and out.
+
+    Caption inputs start at FFmpeg index 2 - 0 is the source video and 1 is the
+    static brand overlay. Commas inside `enable` are escaped because the whole
+    expression lives inside a filtergraph argument list.
+    """
+    steps: list[str] = []
+    stage = source
+
+    for index, caption in enumerate(request.captions):
+        stream = index + 2
+        label = f"cap{index}"
+        start = float(caption.start_time)
+        end = float(caption.end_time)
+        window = max(0.0, end - start)
+        # A very short caption gets a proportionally shorter animation, so the
+        # fade never eats the whole time it is on screen.
+        animation_seconds = min(ANIMATION_SECONDS, window / 3) if window else 0.0
+
+        filters = [f"scale={request.width}:{request.height}", "format=rgba"]
+
+        if caption.animation != "none" and animation_seconds > 0:
+            # Times are relative to the caption's own PTS, which is reset below.
+            filters.append(f"fade=t=in:st=0:d={_ff_time(animation_seconds)}:alpha=1")
+            filters.append(
+                f"fade=t=out:st={_ff_time(window - animation_seconds)}"
+                f":d={_ff_time(animation_seconds)}:alpha=1"
+            )
+
+        # `-loop 1` gives an endless stream; trim it to the caption's length so
+        # the fade-out lands at the right moment, then shift it into place.
+        filters.append(f"trim=duration={_ff_time(window)}")
+        filters.append(f"setpts=PTS-STARTPTS+{_ff_time(start)}/TB")
+
+        steps.append(f"[{stream}:v]{','.join(filters)}[{label}]")
+
+        out_label = sink if index == len(request.captions) - 1 else f"{stage}_{index}"
+        steps.append(
+            f"[{stage}][{label}]overlay=0:0:format=auto"
+            f":enable='between(t\\,{_ff_time(start)}\\,{_ff_time(end)})'[{out_label}]"
+        )
+        stage = out_label
+
+    return ";".join(steps)
 
 
 def build_command(request: RenderRequest) -> list[str]:
@@ -103,6 +166,13 @@ def build_command(request: RenderRequest) -> list[str]:
         str(request.input_path),
         "-i",
         str(request.overlay_path),
+    ]
+
+    # Caption inputs must be added in the same order _caption_chain indexes them.
+    for caption in request.captions:
+        command += ["-loop", "1", "-i", str(caption.path)]
+
+    command += [
         "-filter_complex",
         build_filter_complex(request),
         "-map",
